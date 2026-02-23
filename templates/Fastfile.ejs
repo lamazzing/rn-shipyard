@@ -1,0 +1,59 @@
+default_platform(:ios)
+
+<% if (ios) { %>
+platform :ios do
+  desc "Build iOS app"
+  lane :build do |options|
+    match(
+      type: "<%= ios.matchType %>",
+      readonly: true,
+      app_identifier: "<%= ios.bundleId %>",
+      team_id: "<%= ios.teamId %>"
+    )
+    gym(
+      workspace: "ios/<%= appName %>.xcworkspace",
+      scheme: "<%= appName %>",
+      export_method: "app-store",
+      output_directory: options[:output_dir] || "./output",
+      output_name: options[:output_name] || "<%= appName %>.ipa"
+    )
+  end
+
+  desc "Submit iOS app to App Store Connect"
+  lane :submit do |options|
+    pilot(
+      ipa: options[:ipa_path],
+      skip_waiting_for_build_processing: true
+    )
+  end
+end
+<% } %>
+
+<% if (android) { %>
+platform :android do
+  desc "Build Android app"
+  lane :build do |options|
+    gradle(
+      project_dir: "android",
+      task: "bundle",
+      build_type: "Release",
+      properties: {
+        "android.injected.signing.store.file" => options[:keystore_path] || "<%= android.keystorePath %>",
+        "android.injected.signing.store.password" => options[:keystore_password] || ENV["ANDROID_KEYSTORE_PASSWORD"],
+        "android.injected.signing.key.alias" => options[:key_alias] || "<%= android.keystoreAlias %>",
+        "android.injected.signing.key.password" => options[:key_password] || ENV["ANDROID_KEY_PASSWORD"]
+      }
+    )
+  end
+
+  desc "Submit Android app to Google Play"
+  lane :submit do |options|
+    supply(
+      aab: options[:aab_path],
+      track: options[:track] || "internal",
+      json_key: options[:service_account_key]<% if (android.serviceAccountKeyPath) { %> || "<%= android.serviceAccountKeyPath %>"<% } %>
+
+    )
+  end
+end
+<% } %>
