@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "name": "TestApp",
+    "slug": "test-app",
+    "version": "1.2.0",
+    "ios": {
+      "bundleIdentifier": "com.example.testapp",
+      "buildNumber": "42"
+    },
+    "android": {
+      "package": "com.example.testapp",
+      "versionCode": 42
+    }
+  }
+}

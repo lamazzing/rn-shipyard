@@ -1,0 +1,21 @@
+{
+  "version": "1.0.0",
+  "createdAt": "2026-02-23T14:30:00Z",
+  "platforms": {
+    "ios": {
+      "enabled": true,
+      "signingMethod": "match",
+      "matchGitUrl": "git@github.com:user/certs.git",
+      "matchType": "appstore",
+      "teamId": "ABC123DEF4",
+      "bundleId": "com.example.testapp"
+    },
+    "android": {
+      "enabled": true,
+      "keystorePath": ".shipyard/android/release.keystore",
+      "keystoreAlias": "release",
+      "serviceAccountKeyPath": "./play-service-account.json"
+    }
+  },
+  "outputDir": "./output"
+}
