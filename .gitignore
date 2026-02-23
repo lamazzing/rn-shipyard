@@ -1,0 +1,9 @@
+.env
+node_modules/
+dist/
+output/
+*.ipa
+*.aab
+*.apk
+.shipyard/android/*.keystore
+.shipyard/android/*.jks
