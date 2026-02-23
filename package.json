@@ -1,0 +1,61 @@
+{
+  "name": "rn-shipyard",
+  "version": "0.1.0",
+  "description": "Build and submit Expo apps locally using Fastlane — a local replacement for EAS",
+  "main": "dist/index.js",
+  "bin": {
+    "rn-shipyard": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "templates",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "lint": "tsc --noEmit",
+    "prepublishOnly": "npm run build && npm run test"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lamazzing/rn-shipyard.git"
+  },
+  "keywords": [
+    "react-native",
+    "expo",
+    "fastlane",
+    "build",
+    "submit",
+    "eas",
+    "ios",
+    "android"
+  ],
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/lamazzing/rn-shipyard/issues"
+  },
+  "homepage": "https://github.com/lamazzing/rn-shipyard#readme",
+  "dependencies": {
+    "chalk": "^5.6.2",
+    "cli-table3": "^0.6.5",
+    "commander": "^14.0.3",
+    "ejs": "^4.0.1",
+    "ora": "^9.3.0",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/ejs": "^3.1.5",
+    "@types/node": "^25.3.0",
+    "@types/uuid": "^10.0.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  }
+}
