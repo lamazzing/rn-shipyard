@@ -54,7 +54,16 @@ async function checkRuby(): Promise<CheckResult> {
     if (result.exitCode === 0) {
       const versionMatch = result.stdout.match(/ruby\s+([\d.]+)/);
       const version = versionMatch?.[1] ?? "unknown";
-      return { name: "Ruby", passed: true, version, required: ">= 2.7" };
+      const parts = version.split(".").map(Number);
+      const passed =
+        parts[0] > 2 || (parts[0] === 2 && (parts[1] ?? 0) >= 7);
+      return {
+        name: "Ruby",
+        passed,
+        version,
+        required: ">= 2.7",
+        fix: passed ? undefined : "Update Ruby: brew install ruby",
+      };
     }
   } catch {}
   return {
