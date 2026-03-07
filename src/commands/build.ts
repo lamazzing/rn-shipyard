@@ -10,6 +10,7 @@ import { exec } from "../utils/shell.js";
 import { createLogger } from "../utils/logger.js";
 import { ShipyardError, exitCodeForError } from "../utils/errors.js";
 import { printJson } from "../core/output.js";
+import submitCmd from "./submit.js";
 
 export interface BuildOptions {
   platform: string;
@@ -226,7 +227,6 @@ export default async function buildCmd(opts: BuildOptions): Promise<void> {
   // If --submit flag, trigger submit
   if (opts.submit && !anyFailed) {
     logger.info("Submitting builds...");
-    const { default: submitCmd } = await import("./submit.js");
     await submitCmd({
       platform: opts.platform,
       json: opts.json,
