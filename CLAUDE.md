@@ -4,7 +4,7 @@
 rn-shipyard — A CLI tool that lets indie Expo developers build and submit iOS and Android apps locally from their Mac, replacing Expo's EAS cloud service, using Fastlane under the hood.
 
 ## Stack
-- TypeScript (strict mode) + Node.js >= 18
+- TypeScript (strict mode) + Node.js >= 22.12
 - Commander.js for CLI
 - tsup for bundling
 - Fastlane (Ruby) for builds and submissions

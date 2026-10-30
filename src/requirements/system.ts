@@ -63,11 +63,11 @@ export const systemChecks: CheckDef[] = [
   {
     id: "node",
     group: "System",
-    title: "Node.js >= 20",
+    title: "Node.js >= 22.12",
     blocks: ALL_ACTIONS,
     async run() {
       const version = process.versions.node;
-      if ((parseVersion(version)?.[0] ?? 0) >= 20) return { status: "pass", detail: version };
+      if (versionAtLeast(parseVersion(version) ?? [0], [22, 12])) return { status: "pass", detail: version };
       return {
         status: "fail",
         detail: `${version} is too old`,

@@ -94,7 +94,7 @@ rn-shipyard doctor --json
 | Area | Tool | Needed for |
 |---|---|---|
 | System | macOS (a warning below macOS 13) | everything. The package declares `os: darwin` |
-| System | Node.js 20 or newer | running rn-shipyard |
+| System | Node.js 22.12 or newer | running rn-shipyard |
 | System | git | iOS builds (Match stores certificates in a git repo) |
 | System | Ruby 2.7 or newer | Fastlane. Not needed if Fastlane comes from Homebrew, which bundles its own Ruby |
 | System | Fastlane | iOS and Android builds, submits |

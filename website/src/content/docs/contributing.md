@@ -7,7 +7,7 @@ rn-shipyard is intentionally small. Read the scope rules before starting.
 
 ## Development setup
 
-You need macOS and Node.js 20 or newer. Fastlane and Xcode are only needed for real builds, not for the test suite.
+You need macOS and Node.js 22.12 or newer. Fastlane and Xcode are only needed for real builds, not for the test suite.
 
 ```bash
 git clone https://github.com/lamazzing/rn-shipyard.git

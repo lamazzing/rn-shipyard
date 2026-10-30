@@ -13,7 +13,7 @@ So I wrote [rn-shipyard](https://github.com/lamazzing/rn-shipyard), a small MIT-
 
 ## What you need
 
-macOS 13 or newer, Node.js 20 or newer, an Expo project with dependencies installed (and an `eas.json`), and the usual native tooling: Xcode and CocoaPods for iOS, a JDK 17 and the Android SDK for Android, plus fastlane. You also need an Apple Developer account for iOS and a Google Play developer account for uploads.
+macOS 13 or newer, Node.js 22.12 or newer, an Expo project with dependencies installed (and an `eas.json`), and the usual native tooling: Xcode and CocoaPods for iOS, a JDK 17 and the Android SDK for Android, plus fastlane. You also need an Apple Developer account for iOS and a Google Play developer account for uploads.
 
 You do not have to remember that list. Run this from your project root:
 

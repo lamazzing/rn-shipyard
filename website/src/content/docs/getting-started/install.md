@@ -3,7 +3,7 @@ title: Install
 description: Install rn-shipyard globally with npm, or run it with npx.
 ---
 
-rn-shipyard is an npm package. It needs Node.js 20 or newer on macOS.
+rn-shipyard is an npm package. It needs Node.js 22.12 or newer on macOS.
 
 ```bash
 npm install -g rn-shipyard

@@ -10,7 +10,7 @@
 [![CI](https://github.com/lamazzing/rn-shipyard/actions/workflows/ci.yml/badge.svg)](https://github.com/lamazzing/rn-shipyard/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 ![Platform: macOS](https://img.shields.io/badge/platform-macOS-lightgrey)
-![Node >=20](https://img.shields.io/badge/node-%3E%3D20-339933)
+![Node >=22.12](https://img.shields.io/badge/node-%3E%3D22.12-339933)
 
 [Docs](https://lamazzing.github.io/rn-shipyard/) · [Quickstart](#quickstart) · [Discussions](https://github.com/lamazzing/rn-shipyard/discussions)
 
@@ -97,7 +97,7 @@ If you need cloud builds, iOS builds without a Mac, or OTA updates, use EAS. If 
 | Tool | Needed for | Notes |
 |---|---|---|
 | macOS 13+ | everything | the package declares `os: darwin` |
-| Node.js >= 20, git | runtime, Match | `brew install node` |
+| Node.js >= 22.12, git | runtime, Match | `brew install node` |
 | Ruby >= 2.7, Fastlane | build + submit | `brew install fastlane`; the Homebrew build brings its own Ruby |
 | Xcode (selected with `xcode-select`, license accepted), CocoaPods | iOS | Mac App Store, then `sudo xcodebuild -license accept`; `brew install cocoapods` |
 | JDK 17+ with `JAVA_HOME`, Android SDK (`ANDROID_HOME`, platform-tools, build-tools), `keytool` | Android | `brew install --cask zulu@17`; Android Studio installs the SDK |
