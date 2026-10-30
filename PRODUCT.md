@@ -144,14 +144,14 @@ Exit: 0 always.
 
 ## Out of Scope (V1)
 1. EAS Update (OTA updates) — different system entirely
-2. Remote/cloud builds — opposite of the point
+2. Remote/cloud builds — not in V1. Planned later: optional builds on the user's own GitHub Actions macOS runners (`cloud init`, `build --cloud`); see the docs roadmap
 3. Windows/Linux support — Mac only (Xcode requirement)
 4. Monorepo support — standard Expo projects only
 5. Custom Fastlane lanes — power user feature for V2
 6. Build caching — optimization, not core
 7. Parallel iOS+Android builds — nice to have, sequential in V1
 8. Push notifications setup — separate concern
-9. CI/CD integration — users run locally for V1
+9. CI/CD integration — users run locally for V1 (the GitHub Actions cloud build above is the planned exception)
 10. Config migration wizard — just reads eas.json directly
 11. Multiple team/org support — indie dev = solo
 12. Build webhooks/callbacks — cloud feature

@@ -1,7 +1,16 @@
 ---
 title: Roadmap
-description: What rn-shipyard does not do, and what might come later, including hosted builds.
+description: What might come next (cloud builds on your own GitHub Actions, hosted builds) and what rn-shipyard does not do.
 ---
+
+## Planned: cloud builds with your own GitHub Actions
+
+Build in the cloud without a Mac of your own and without an Expo account, on GitHub's macOS runners:
+
+- `rn-shipyard cloud init` would generate a workflow in your app's repository and store the signing secrets (keystore and passwords, Match password, App Store Connect API key) as GitHub Actions secrets.
+- `rn-shipyard build --cloud` would start that workflow, stream the log to your terminal and download the `.ipa` / `.aab` when it finishes.
+
+It uses your own GitHub Actions minutes. Hosted runners are free for public repositories; private repositories use the minutes included in your GitHub plan, and macOS minutes count more than Linux ones. See [GitHub's pricing](https://docs.github.com/en/billing/managing-billing-for-your-products/managing-billing-for-github-actions/about-billing-for-github-actions) for the current numbers. It is not built yet and has no date. If you would use it, [say so in Discussions](https://github.com/lamazzing/rn-shipyard/discussions).
 
 ## Hosted builds: on the roadmap
 

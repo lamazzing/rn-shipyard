@@ -15,7 +15,7 @@ rn-shipyard needs no Expo account and no EAS project, works offline until the up
 
 ## Do I need a Mac?
 
-Yes, for iOS. Xcode only runs on macOS. For Android a Mac works too, and that is what rn-shipyard supports. Windows and Linux are not supported. If you have no Mac, EAS cloud builds are the better fit today, and hosted builds are on the [roadmap](/roadmap/).
+Yes, for iOS. Xcode only runs on macOS. For Android a Mac works too, and that is what rn-shipyard supports. Windows and Linux are not supported. If you have no Mac, EAS cloud builds are the better fit today. Cloud builds on your own GitHub Actions and hosted builds are on the [roadmap](/roadmap/).
 
 ## Do I need an Apple Developer account?
 

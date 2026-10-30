@@ -395,7 +395,9 @@ Issues and pull requests are welcome. See [CONTRIBUTING.md](./CONTRIBUTING.md). 
 
 Out of scope on purpose: OTA updates, Windows and Linux, monorepos, custom Fastlane lanes, build caching, parallel platform builds, automatic version bumping.
 
-Hosted builds without the queue are on the roadmap, for people with no Mac or who want builds off their machine. Nothing hosted exists today. If you want it, [tell us in Discussions](https://github.com/lamazzing/rn-shipyard/discussions).
+Planned: **cloud builds with your own GitHub Actions**. `rn-shipyard build --cloud` would run the same build on GitHub's macOS runners, using your repository's Actions minutes, with no Mac and no Expo account needed.
+
+Hosted builds without the queue are on the roadmap too, for people with no Mac or who want builds off their machine. Nothing hosted exists today. If you want it, [tell us in Discussions](https://github.com/lamazzing/rn-shipyard/discussions).
 
 More: [Roadmap](https://lamazzing.github.io/rn-shipyard/roadmap/)
 

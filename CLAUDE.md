@@ -40,7 +40,7 @@ rn-shipyard — A CLI tool that lets indie Expo developers build and submit iOS 
 - Do NOT skip writing tests
 - Do NOT use placeholder data
 - Do NOT add EAS Update / OTA support
-- Do NOT add remote/cloud build support
+- Do NOT add remote/cloud build support (V1; the GitHub Actions cloud build is on the roadmap, build it only when asked)
 - Do NOT add Windows/Linux support
 - Do NOT add monorepo support
 - Do NOT add custom Fastlane lane support

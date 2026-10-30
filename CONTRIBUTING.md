@@ -37,7 +37,7 @@ Every command must support `--json` and `--non-interactive`, use exit codes 0 (s
 These will not be accepted:
 
 - EAS Update / OTA support
-- Remote or cloud builds
+- Remote or cloud builds (exception: the planned GitHub Actions cloud build on the [roadmap](https://lamazzing.github.io/rn-shipyard/roadmap/); discuss before starting)
 - Windows or Linux support
 - Monorepo support
 - Custom Fastlane lanes
