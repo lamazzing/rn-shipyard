@@ -51,7 +51,59 @@ If you use `app.config.ts`, `.js`, `.mjs` or `.cjs`, rn-shipyard evaluates it wi
 
 The EAS names for Apple and App Store Connect credentials (`EXPO_APPLE_ID`, `EXPO_APPLE_PASSWORD`, `EXPO_APPLE_APP_SPECIFIC_PASSWORD`, `EXPO_APPLE_TEAM_ID`, `EXPO_ASC_API_KEY_PATH`, `EXPO_ASC_KEY_ID`, `EXPO_ASC_ISSUER_ID`) work as aliases for the Fastlane names. If both are set, the Fastlane name wins. See [Environment variables](/reference/environment-variables/#eas-aliases).
 
+## Import your EAS credentials (one command)
+
+`init --from-eas` imports the signing credentials EAS holds, so you switch without a new iOS certificate and without a new Android upload key.
+
+### 1. Download them from EAS
+
+```bash
+npx eas-cli credentials
+```
+
+Choose the platform, then **credentials.json: Upload/Download credentials between EAS servers and your local json**, then **Download credentials from EAS to credentials.json**. Run it in the project folder, once per platform. It writes `credentials.json` plus a `credentials/` folder (`credentials/android/keystore.jks`, `credentials/ios/dist-cert.p12`, `credentials/ios/profile.mobileprovision`). `credentials.json` holds the passwords in plain text. An app with extensions (several iOS targets) gets one entry per target.
+
+### 2. Import
+
+```bash
+rn-shipyard init --from-eas                              # ./credentials.json, both platforms in the file
+rn-shipyard init --platform android --from-eas           # one platform
+rn-shipyard init --from-eas path/to/credentials.json     # another location
+```
+
+If the file is missing, `init` stops with `EAS_CREDENTIALS_NOT_FOUND` (exit `2`) and repeats the steps above. A platform that is not in the file is skipped with a warning; `init` never generates a new key in its place.
+
+**Android.** `init` opens the keystore with `keytool` (passwords through the environment, never argv), checks the key alias and the key password, and prints the SHA-256 certificate fingerprint. It copies the keystore to `~/.config/rn-shipyard/<slug>/release.keystore` and writes `android-credentials.json` next to it (folder mode `700`, files `600`), then configures `.shipyard/config.json` with `~/` paths, exactly like `--android-keystore` and `--android-credentials`. Compare the fingerprint with Google Play Console > your app > Test and release > App integrity > App signing > Upload key certificate: they must be identical. A different keystore already in that folder is never overwritten silently: in a terminal you are asked (the old file is kept as `.bak-<time>`), with `--non-interactive` the command stops with `EAS_KEYSTORE_EXISTS`. If EAS managed your versionCode, add `--android-last-version-code <n>`.
+
+**iOS.** `init` converts the EAS distribution certificate in a private temporary folder (mode `700`, removed on success, failure and Ctrl-C): EAS's `.p12` has a password, while Match stores the certificate as a `.cer` plus the private key as an unencrypted RSA PEM (named `.p12`). So it extracts those two with `openssl` (the password goes through the environment, never argv; macOS's LibreSSL and Homebrew's OpenSSL 3+ both work; a non-RSA key is refused). The plaintext key exists only in the temp folder. Then it runs `fastlane match import` through an internal lane (`shipyard_match_import`). That command matches the certificate with your Apple developer account, encrypts the files with `MATCH_PASSWORD`, and commits and **pushes** them to your Match repo. Every target's provisioning profile is imported. You need:
+
+- `MATCH_GIT_URL`, `APPLE_TEAM_ID` and `MATCH_PASSWORD` (in a terminal `init` asks for what is missing; for a new repo choose the password now and keep it).
+- Git access to the repo and an Apple login. In a terminal both prompt normally on your own terminal (Apple ID, 2FA). With `--non-interactive` there is no prompt: use an App Store Connect API key (`APP_STORE_CONNECT_API_KEY_KEY_ID`, `_ISSUER_ID`, `_KEY_FILEPATH`) and ssh-agent or `MATCH_GIT_BASIC_AUTHORIZATION`.
+
+**Known limitation:** profiles of app extensions are imported into the repo, but `build` only fetches the profile of the main bundle ID (`ios.bundleIdentifier`).
+
+### 3. Check, build, then delete the plaintext files
+
+`init` prints (and with `--json` returns in `nextSteps`) what to do next:
+
+1. Compare the Android fingerprint with Play Console (above).
+2. Build once: `rn-shipyard build --platform all`.
+3. When that works, delete the plaintext EAS files. They contain your signing passwords, so do not leave them around or commit them:
+
+```bash
+rm -r -- credentials.json credentials/      # eas-cli's default layout
+rm -- credentials.json android/keystores/release.keystore    # a layout with files elsewhere
+```
+
+`init` prints the exact command for your files. It lists individual files, and collapses to the `credentials/` folder only when that is eas-cli's default folder and holds nothing but your credentials. It never lists `android/` or `ios/`. rn-shipyard never deletes your files. `init` adds those paths to your `.gitignore` and warns if they are not ignored or are already tracked by git (`git rm --cached -- <file>` untracks one).
+
+If the keystore or the `.p12` was ever pushed or shared, changing the passwords does not help, because the key file itself is exposed. Request an upload-key reset in Play Console, revoke the distribution certificate in the Apple Developer portal, and purge the files from your git history.
+
+During the import the plaintext private key exists only in a private temporary folder (mode `700`), as in fastlane's own flow. It is removed on success, failure and Ctrl-C; a hard kill (SIGKILL) can leave it in your `$TMPDIR`, so delete `shipyard-eas-ios-*` folders there if that happens.
+
 ## Keep your Android upload key
+
+If you prefer to place the files yourself:
 
 EAS holds the upload keystore for you. To keep shipping updates to the same Play listing, download it and hand it to `init`:
 

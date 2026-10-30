@@ -25,6 +25,8 @@ your Expo project
 | `.shipyard/.gitignore` | Yes |
 | `.shipyard/history.json` | No. Ignored by `.shipyard/.gitignore` |
 | `.shipyard/android/*.keystore`, `*.jks` | Never. Ignored |
+| `credentials.json` and `credentials/` from `eas credentials` | Never. `init --from-eas` adds them to `.gitignore`; delete them once the import works |
+| `~/.config/rn-shipyard/<slug>/` (written by `init --from-eas`) | Not in the repo. Folder `700`, files `600` |
 | Credentials JSON, service-account JSON, `.p8`, `.p12`, provisioning profiles, `.env` | Never. Keep them outside the repo |
 | `fastlane/Fastfile`, `Appfile`, `Matchfile` | Yes |
 | `fastlane/report.xml`, `fastlane/README.md` | No |

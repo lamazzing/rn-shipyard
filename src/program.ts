@@ -61,7 +61,8 @@ export function createProgram(argv: string[] = process.argv): Command {
     .option("--android-keystore <path>", "Use an existing keystore instead of generating one")
     .option("--android-credentials <path>", "JSON file with keystorePassword, keyAlias, keyPassword (keep outside the repo)")
     .option("--android-last-version-code <n>", "Seed the versionCode counter (e.g. the EAS remote counter)")
-    .addHelpText("after", "\nExamples:\n  $ rn-shipyard init\n  $ rn-shipyard init --platform ios\n  $ rn-shipyard init --non-interactive --platform android")
+    .option("--from-eas [path]", "Import the signing credentials `eas credentials` downloaded (default ./credentials.json)")
+    .addHelpText("after", "\nExamples:\n  $ rn-shipyard init\n  $ rn-shipyard init --platform ios\n  $ rn-shipyard init --non-interactive --platform android\n  $ rn-shipyard init --from-eas")
     .action(async (_opts, cmd) => {
       const globalOpts = cmd.optsWithGlobals();
       await initCmd(globalOpts);

@@ -37,6 +37,40 @@ platform :ios do
     UI.success("Logged in to App Store Connect as " + user)
   end
 
+  desc "Import EAS certificate + provisioning profile(s) into the Match repo (run by rn-shipyard init --from-eas)"
+  lane :shipyard_match_import do
+    require "json"
+    require "match"
+    # rn-shipyard converts the EAS distribution certificate (.cer + the private key as a traditional RSA PEM, which is what match stores as its .p12) in a private temp
+    # directory and lists them in a JSON file: [{ "cer": ..., "p12": ..., "profile": ... }]. Secrets
+    # (MATCH_PASSWORD, git auth) arrive through the environment, never in arguments.
+    entries_file = ENV["SHIPYARD_IMPORT_ENTRIES_FILE"].to_s
+    UI.user_error!("SHIPYARD_IMPORT_ENTRIES_FILE is not set") if entries_file.empty?
+    entries = JSON.parse(File.read(entries_file))
+    UI.user_error!("Nothing to import") if entries.empty?
+    api_key = nil
+    if [ENV["APP_STORE_CONNECT_API_KEY_KEY_ID"], ENV["APP_STORE_CONNECT_API_KEY_ISSUER_ID"]].none? { |v| v.to_s.empty? } &&
+       [ENV["APP_STORE_CONNECT_API_KEY_KEY"], ENV["APP_STORE_CONNECT_API_KEY_KEY_FILEPATH"]].any? { |v| !v.to_s.empty? }
+      api_key = app_store_connect_api_key
+    end
+    # Match::Importer#import_cert: matches the certificate against the developer portal (so the stored
+    # files carry its certificate id), encrypts with MATCH_PASSWORD, commits and pushes to the repo.
+    # One call per provisioning profile (app + extensions); the certificate files are the same.
+    entries.each do |entry|
+      options = {}
+      options[:api_key] = api_key unless api_key.nil?
+      params = FastlaneCore::Configuration.create(Match::Options.available_options, options)
+      params.load_configuration_file("Matchfile") # git_url, type, app_identifier, team_id (as `fastlane match import` does)
+      Match::Importer.new.import_cert(
+        params,
+        cert_path: entry["cer"],
+        p12_path: entry["p12"],
+        profile_path: entry["profile"]
+      )
+    end
+    UI.success("Imported " + entries.length.to_s + " provisioning profile(s) into the Match repository")
+  end
+
   desc "Submit iOS app to App Store Connect"
   lane :submit do |options|
     # An App Store Connect API key given through APP_STORE_CONNECT_API_KEY_* environment variables
