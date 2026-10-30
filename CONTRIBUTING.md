@@ -61,6 +61,13 @@ Before your first pull request can be merged, you sign the [CLA](./CLA.md). You 
 
 To sign, comment on your pull request with exactly: `I have read the CLA Document and I hereby sign the CLA`. A bot records your GitHub username once and you will not be asked again.
 
+## Releasing (maintainers)
+
+1. Bump `version` in `package.json` and add the release to `CHANGELOG.md`.
+2. Commit, then tag and push: `git tag v0.1.1 && git push origin main v0.1.1`.
+3. `.github/workflows/release.yml` runs lint, tests and build, then publishes to npm with
+   provenance through npm trusted publishing (no token). The tag must match the version.
+
 ## Pull requests
 
 Use conventional commit messages (`feat:`, `fix:`, `docs:`, `chore:`), keep PRs focused, add tests, and make sure lint, test and build pass.
