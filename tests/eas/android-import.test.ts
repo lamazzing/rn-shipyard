@@ -107,6 +107,7 @@ describe("importAndroidKeystore", () => {
       const dir = secretsDirFor("app");
       await mkdir(dir, { recursive: true });
       await writeFile(join(dir, "release.keystore"), "OTHER-KEYSTORE");
+      await writeFile(join(dir, "android-credentials.json"), "OLD-CREDS");
     });
 
     it("non-interactive: EAS_KEYSTORE_EXISTS and the file is untouched", async () => {
@@ -126,6 +127,10 @@ describe("importAndroidKeystore", () => {
       const r = await importAndroidKeystore({ creds: creds(work), slug: "app", confirmReplace: async () => true });
       expect(r.backupPath).toBeDefined();
       expect(await readFile(r.backupPath!, "utf-8")).toBe("OTHER-KEYSTORE");
+      // the old passwords are kept with the old keystore (same suffix), the new file holds the new ones
+      expect(r.credentialsBackupPath).toBe(r.credentialsPath + r.backupPath!.slice(r.keystorePath.length));
+      expect(await readFile(r.credentialsBackupPath!, "utf-8")).toBe("OLD-CREDS");
+      expect(JSON.parse(await readFile(r.credentialsPath, "utf-8")).keystorePassword).toBe(STORE_PW);
       expect(await readFile(r.keystorePath, "utf-8")).toBe("keystore-bytes-A");
     });
   });

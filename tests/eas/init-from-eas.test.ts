@@ -15,7 +15,7 @@ vi.mock("../../src/utils/shell.js", () => ({ exec: vi.fn(), registerStdinRelease
 import { exec } from "../../src/utils/shell.js";
 import { setupMatch } from "../../src/platforms/ios/signing.js";
 import { importIosCredentials } from "../../src/platforms/ios/eas-import.js";
-import initCmd, { type InitOptions, easPlaintextPaths } from "../../src/commands/init.js";
+import initCmd, { type InitOptions } from "../../src/commands/init.js";
 
 class ExitError extends Error {
   constructor(public code: number) {
@@ -166,7 +166,7 @@ describe("init --from-eas (Android)", () => {
       return { exitCode: 0, stdout: "", stderr: "" };
     }) as never);
     const { json } = await run();
-    expect(json.warnings.join("\n")).toContain("tracked by git. Untrack it: git rm -r --cached -- credentials.json");
+    expect(json.warnings.join("\n")).toContain("tracked by git. Untrack it: git rm --cached -- credentials.json");
   });
 
   it("missing credentials.json: EAS_CREDENTIALS_NOT_FOUND, exit 2, with the eas-cli steps", async () => {
@@ -203,6 +203,48 @@ describe("init --from-eas (Android)", () => {
     expect(json.error.code).toBe("EAS_KEYSTORE_EXISTS");
     expect(await readFile(join(target, "release.keystore"), "utf-8")).toBe("OLD");
   });
+
+  it("Expo-docs layout (android/keystores, ios/certs): individual files, never android/ or ios/ in .gitignore, warnings or rm", async () => {
+    await mkdir(join(dir, "android", "keystores"), { recursive: true });
+    await writeFile(join(dir, "android/keystores/release.keystore"), "EAS-KEYSTORE");
+    await writeFile(join(dir, "credentials.json"), JSON.stringify({ android: { keystore: { keystorePath: "android/keystores/release.keystore", keystorePassword: STORE_PW, keyAlias: "upload" } } }));
+    vi.mocked(exec).mockImplementation((async (cmd: string, args: string[]) => {
+      if (cmd === "git" && args[0] === "ls-files") return { exitCode: 0, stdout: "", stderr: "" }; // tracked
+      if (cmd === "git") return { exitCode: 1, stdout: "", stderr: "" };
+      if (cmd === "keytool") return { exitCode: 0, stdout: `SHA256: ${FP}\n`, stderr: "" };
+      return { exitCode: 0, stdout: "", stderr: "" };
+    }) as never);
+    const { code, json } = await run();
+    expect(code).toBe(0);
+    expect(json.plaintextFiles).toEqual(["credentials.json", "android/keystores/release.keystore"]);
+    const gi = (await readFile(join(dir, ".gitignore"), "utf-8")).split("\n");
+    expect(gi).toContain("android/keystores/release.keystore");
+    expect(gi).not.toContain("android/");
+    expect(gi).not.toContain("ios/");
+    const everything = JSON.stringify(json.warnings) + json.nextSteps.join("\n");
+    expect(everything).not.toMatch(/(^|[ '"])(android|ios)\/(?!keystores)/);
+    expect(everything).toContain("rm -- credentials.json android/keystores/release.keystore");
+    expect(everything).not.toContain("rm -r");
+    expect(everything).toContain("git rm --cached -- android/keystores/release.keystore");
+    // git is asked with literal pathspecs
+    const gitCalls = vi.mocked(exec).mock.calls.filter((c) => c[0] === "git");
+    expect(gitCalls.length).toBeGreaterThan(0);
+    for (const c of gitCalls) expect((c[2] as any).env).toMatchObject({ GIT_LITERAL_PATHSPECS: "1" });
+  });
+
+  it("files outside the project are in the delete step (as ~/ path) but not in .gitignore", async () => {
+    const ks = join(home, "secrets", "my key.jks");
+    await mkdir(join(home, "secrets"), { recursive: true });
+    await writeFile(ks, "EAS-KEYSTORE");
+    await writeFile(join(dir, "credentials.json"), JSON.stringify({ android: { keystore: { keystorePath: ks, keystorePassword: STORE_PW, keyAlias: "upload" } } }));
+    const { code, json } = await run();
+    expect(code).toBe(0);
+    expect(json.plaintextFiles).toEqual(["credentials.json", "~/secrets/my key.jks"]);
+    expect(json.nextSteps.join("\n")).toContain("rm -- credentials.json ~/'secrets/my key.jks'");
+    expect(await readFile(join(dir, ".gitignore"), "utf-8")).not.toContain("secrets");
+    expect(json.warnings.join("\n")).toContain("outside the project");
+  });
+
 
   it("--from-eas cannot be combined with --android-keystore", async () => {
     const { code, json } = await run({ androidKeystore: join(dir, "x.jks") });
@@ -276,17 +318,3 @@ describe("init --from-eas (iOS)", () => {
   });
 });
 
-describe("easPlaintextPaths", () => {
-  it("lists credentials.json plus the credentials/ folder, not every file in it", () => {
-    const creds = {
-      file: "/p/credentials.json",
-      dir: "/p",
-      android: { keystorePath: "/p/credentials/android/keystore.jks", keystorePassword: "", keyAlias: "", keyPassword: "" },
-      ios: [
-        { name: "a", certificatePath: "/p/credentials/ios/a.p12", certificatePassword: "", provisioningProfilePath: "/p/credentials/ios/a.mobileprovision" },
-        { name: "b", certificatePath: "/p/b.p12", certificatePassword: "", provisioningProfilePath: "/outside/b.mobileprovision" },
-      ],
-    };
-    expect(easPlaintextPaths("/p", creds)).toEqual(["credentials.json", "credentials/", "b.p12"]);
-  });
-});

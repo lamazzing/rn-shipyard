@@ -91,12 +91,17 @@ If the file is missing, `init` stops with `EAS_CREDENTIALS_NOT_FOUND` (exit `2`)
 3. When that works, delete the plaintext EAS files. They contain your signing passwords, so do not leave them around or commit them:
 
 ```bash
-rm -r -- credentials.json credentials/
+rm -r -- credentials.json credentials/      # eas-cli's default layout
+rm -- credentials.json android/keystores/release.keystore    # a layout with files elsewhere
 ```
 
-rn-shipyard never deletes your files; the exact command is printed for you. `init` adds `credentials/` to your `.gitignore` and warns if `credentials.json` was not ignored or is already tracked by git (`git rm -r --cached -- credentials.json credentials/` untracks it; rotate the passwords if it was ever pushed).
+`init` prints the exact command for your files. It lists individual files, and collapses to the `credentials/` folder only when that is eas-cli's default folder and holds nothing but your credentials. It never lists `android/` or `ios/`. rn-shipyard never deletes your files. `init` adds those paths to your `.gitignore` and warns if they are not ignored or are already tracked by git (`git rm --cached -- <file>` untracks one).
 
-## Keep your Android upload key (manual way)
+If the keystore or the `.p12` was ever pushed or shared, changing the passwords does not help, because the key file itself is exposed. Request an upload-key reset in Play Console, revoke the distribution certificate in the Apple Developer portal, and purge the files from your git history.
+
+During the import the plaintext private key exists only in a private temporary folder (mode `700`), as in fastlane's own flow. It is removed on success, failure and Ctrl-C; a hard kill (SIGKILL) can leave it in your `$TMPDIR`, so delete `shipyard-eas-ios-*` folders there if that happens.
+
+## Keep your Android upload key
 
 If you prefer to place the files yourself:
 

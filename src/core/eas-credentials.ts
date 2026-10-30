@@ -51,6 +51,8 @@ const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "obj
 const str = (v: unknown): v is string => typeof v === "string";
 const nonEmpty = (v: unknown): v is string => typeof v === "string" && v.trim() !== "";
 
+const CONTROL = /[\x00-\x1f\x7f]/;
+
 function absolute(dir: string, p: string): string {
   return isAbsolute(p) ? p : join(dir, p);
 }
@@ -85,6 +87,18 @@ export async function readEasCredentials(projectDir: string, pathArg?: string): 
 
   const dir = dirname(file);
   const out: EasCredentials = { file, dir };
+  // paths end up in .gitignore lines and printed shell commands: no newlines or other control characters
+  const rawPaths = [
+    isObject(data.android) && isObject(data.android.keystore) ? data.android.keystore.keystorePath : undefined,
+    ...(isObject(data.ios)
+      ? [data.ios, ...Object.values(data.ios)].flatMap((t) =>
+          isObject(t) ? [t.provisioningProfilePath, isObject(t.distributionCertificate) ? t.distributionCertificate.path : undefined] : []
+        )
+      : []),
+  ];
+  if (rawPaths.some((p) => typeof p === "string" && CONTROL.test(p))) {
+    throw invalid(file, "a file path contains a control character (such as a newline)");
+  }
 
   if (data.android !== undefined) {
     const ks = isObject(data.android) ? data.android.keystore : undefined;

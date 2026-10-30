@@ -281,7 +281,7 @@ export async function importIosCredentials(opts: IosEasImportOptions): Promise<I
         "EAS_IOS_IMPORT_FAILED",
         `fastlane match import into ${safeUrl(opts.gitUrl)} failed (exit ${result.exitCode}${tail ? `: ${tail}` : ""})`,
         opts.interactive
-          ? "Fix the problem shown above and re-run the same command; the import is safe to repeat"
+          ? "Fix the problem shown above and re-run the same command. Nothing in .shipyard/ was written yet (only fastlane/ files); the import is safe to repeat"
           : "Run without --non-interactive to sign in to Apple and git on your terminal, or set an App Store Connect API key (APP_STORE_CONNECT_API_KEY_KEY_ID, _ISSUER_ID, _KEY_FILEPATH) and git access (ssh-agent or MATCH_GIT_BASIC_AUTHORIZATION)"
       );
     }

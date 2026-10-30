@@ -18,6 +18,8 @@ export interface AndroidEasImport {
   sha256: string;
   /** Previous, different keystore that was kept under this name instead of being overwritten */
   backupPath?: string;
+  /** The previous android-credentials.json, kept next to the backup keystore (it holds that keystore's passwords) */
+  credentialsBackupPath?: string;
   /** The same keystore was already there */
   unchanged: boolean;
 }
@@ -138,6 +140,7 @@ export async function importAndroidKeystore(opts: {
   const credentialsPath = join(dir, IMPORTED_CREDENTIALS_NAME);
 
   let backupPath: string | undefined;
+  let credentialsBackupPath: string | undefined;
   const same = await sameBytes(keystorePath, bytes);
   if (same === false) {
     const ok = opts.confirmReplace ? await opts.confirmReplace(keystorePath) : false;
@@ -150,8 +153,15 @@ export async function importAndroidKeystore(opts: {
           : `Move or rename it yourself, or run \`rn-shipyard init --from-eas\` in a terminal to be asked. It may be your only copy of an upload key: back it up before replacing it`
       );
     }
-    backupPath = `${keystorePath}.bak-${new Date().toISOString().replace(/[-:]/g, "").slice(0, 15)}`;
+    const stamp = new Date().toISOString().replace(/[-:]/g, "").slice(0, 15);
+    backupPath = `${keystorePath}.bak-${stamp}`;
     await rename(keystorePath, backupPath);
+    try {
+      await rename(credentialsPath, `${credentialsPath}.bak-${stamp}`);
+      credentialsBackupPath = `${credentialsPath}.bak-${stamp}`;
+    } catch {
+      // no credentials file next to it
+    }
   }
   if (same !== true) {
     await writeFile(keystorePath, bytes, { mode: 0o600 });
@@ -166,5 +176,5 @@ export async function importAndroidKeystore(opts: {
   await writeFile(credentialsPath, JSON.stringify(file, null, 2) + "\n", { mode: 0o600 });
   await chmod(credentialsPath, 0o600);
 
-  return { dir, keystorePath, credentialsPath, keyAlias: creds.keyAlias, sha256, backupPath, unchanged: same === true };
+  return { dir, keystorePath, credentialsPath, keyAlias: creds.keyAlias, sha256, backupPath, credentialsBackupPath, unchanged: same === true };
 }

@@ -80,4 +80,11 @@ describe("readEasCredentials (eas-cli credentialsJson schema)", () => {
     const err = await expectCode(readEasCredentials(dir), "EAS_CREDENTIALS_INVALID");
     expect(JSON.stringify(err.toJSON())).not.toContain("TOP-SECRET-PW");
   });
+
+  it("rejects control characters in file paths (they would end up in .gitignore and printed commands)", async () => {
+    await write({ android: { keystore: { keystorePath: "credentials/a\n!evil.jks", keystorePassword: "p", keyAlias: "a" } } });
+    await expectCode(readEasCredentials(dir), "EAS_CREDENTIALS_INVALID");
+    await write({ ios: { t: { provisioningProfilePath: "p", distributionCertificate: { path: "c\u0007.p12", password: "x" } } } });
+    await expectCode(readEasCredentials(dir), "EAS_CREDENTIALS_INVALID");
+  });
 });

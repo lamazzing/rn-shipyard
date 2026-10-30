@@ -1,4 +1,4 @@
-import { readFile, writeFile, access } from "node:fs/promises";
+import { readFile, writeFile, access, readdir, stat } from "node:fs/promises";
 import { dirname, join, relative, isAbsolute, sep } from "node:path";
 import chalk from "chalk";
 import { parseEasConfig, parseAppConfig, profileEnvFrom, profileEnvWarnings, configFieldHint } from "../core/eas-parser.js";
@@ -295,7 +295,13 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
         ? `EAS keystore already in ${toPortablePath(projectDir, androidImport.dir)}/`
         : `Copied the EAS keystore to ${toPortablePath(projectDir, androidImport.keystorePath)} (mode 600)`
     );
-    if (androidImport.backupPath) logger.warn(`The previous keystore was kept as ${toPortablePath(projectDir, androidImport.backupPath)}`);
+    if (androidImport.backupPath) {
+      logger.warn(
+        `The previous keystore was kept as ${toPortablePath(projectDir, androidImport.backupPath)}${
+          androidImport.credentialsBackupPath ? ` and its passwords as ${toPortablePath(projectDir, androidImport.credentialsBackupPath)}` : ""
+        }`
+      );
+    }
     logger.success(`Upload key certificate SHA-256 (alias ${androidImport.keyAlias}): ${androidImport.sha256}`);
   }
 
@@ -444,7 +450,13 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
       // --from-eas: the import into the Match repo runs after the Fastfile (which has its lane) is written
       let password = matchPassword ?? "";
       if (!password && interactive) {
-        password = await getPrompter().askSecret("Match password (encrypts the certificates in the Match repo)");
+        const p = getPrompter();
+        for (let attempt = 0; attempt < 3 && !password; attempt++) {
+          const first = await p.askSecret("Match password (encrypts the certificates in the Match repo)");
+          if (!first) continue;
+          if ((await p.askSecret("Repeat Match password")) === first) password = first;
+          else logger.warn("Passwords do not match");
+        }
       }
       if (!password) {
         return fail(
@@ -621,36 +633,30 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
     }
   }
 
-  // --- --from-eas: the plaintext EAS files left in the project (reported, never deleted by us) ---
-  const easFiles = easCreds ? easPlaintextPaths(projectDir, easCreds) : [];
+  // --- --from-eas: the plaintext EAS files left behind (reported, never deleted by us) ---
+  const easEntries = easCreds ? await easPlaintextEntries(projectDir, easCreds) : [];
+  const easFiles = easEntries.map((e) => e.display);
   if (easCreds) {
-    for (const f of easFiles) {
-      if (await isGitTracked(projectDir, f)) {
-        logger.warn(`${f} holds your signing passwords/keys and is tracked by git. Untrack it: git rm -r --cached -- ${shellQuote(f)}`);
-      } else if (await isGitUnignored(projectDir, f)) {
-        logger.warn(`${f} holds your signing passwords/keys and was not git-ignored. rn-shipyard adds it to .gitignore`);
+    for (const e of easEntries.filter((x) => x.inProject)) {
+      if (await isGitTracked(projectDir, e.display)) {
+        logger.warn(`${e.display} holds your signing passwords/keys and is tracked by git. Untrack it: git rm ${e.isDir ? "-r " : ""}--cached -- ${shellQuote(e.display)}`);
+      } else if (await isGitUnignored(projectDir, e.display)) {
+        logger.warn(`${e.display} holds your signing passwords/keys and was not git-ignored. rn-shipyard adds it to .gitignore`);
       }
+    }
+    for (const e of easEntries.filter((x) => !x.inProject)) {
+      logger.warn(`${e.display} (outside the project) holds your signing passwords/keys: delete it once a build works`);
     }
   }
 
-  // --- Write config ---
-  await writeConfig(projectDir, config);
-  logger.success("Created .shipyard/config.json");
-
-  // --- Generate Fastlane files ---
+  // --- Generate Fastlane files (the iOS import below needs the shipyard_match_import lane) ---
   const appleId = easConfig?.submit?.production?.ios?.appleId as string | undefined;
   const packageName = appConfig.android?.package;
   await generateAll(projectDir, config, appConfig.name, appleId, packageName);
   logger.success("Generated fastlane/ files");
 
-  // --- Update .gitignore ---
-  await updateGitignore(projectDir, easFiles);
-  logger.success("Updated .gitignore");
-  if (await ensureShipyardGitignore(projectDir)) {
-    logger.success("Wrote .shipyard/.gitignore");
-  }
-
-  // --- --from-eas, iOS: import into the Match repo (pushes to it; may prompt on the terminal) ---
+  // --- --from-eas, iOS: import into the Match repo (pushes to it; may prompt on the terminal).
+  // Before .shipyard/config.json is written, so a failed or interrupted import leaves no config behind. ---
   let iosImport: IosEasImport | undefined;
   if (iosImportPlan) {
     logger.info("Importing the EAS distribution certificate and provisioning profile(s) into the Match repository...");
@@ -661,6 +667,17 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
         `Imported ${t.target}${t.bundleId ? ` (${t.bundleId})` : ""}: certificate SHA-256 ${t.certificateSha256}, expires ${t.certificateExpires}`
       );
     }
+  }
+
+  // --- Write config ---
+  await writeConfig(projectDir, config);
+  logger.success("Created .shipyard/config.json");
+
+  // --- Update .gitignore ---
+  await updateGitignore(projectDir, easEntries.filter((e) => e.inProject).map((e) => gitignoreLiteral(e.display)));
+  logger.success("Updated .gitignore");
+  if (await ensureShipyardGitignore(projectDir)) {
+    logger.success("Wrote .shipyard/.gitignore");
   }
 
   // --- Next steps after an import ---
@@ -678,9 +695,10 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
     }
     const built = [config.platforms.ios ? "ios" : undefined, config.platforms.android ? "android" : undefined].filter(Boolean);
     if (built.length > 0) nextSteps.push(`Build once to confirm the imported credentials work: rn-shipyard build --platform ${built.length === 2 ? "all" : built[0]}`);
-    if (easFiles.length > 0) {
+    if (easEntries.length > 0) {
+      const rm = easEntries.some((e) => e.isDir) ? "rm -r --" : "rm --";
       nextSteps.push(
-        `After that build works, delete the plaintext EAS files (they contain your signing passwords): rm -r -- ${easFiles.map(shellQuote).join(" ")}  (check the folder first; rn-shipyard never deletes them for you)`
+        `After that build works, delete the plaintext EAS files (they contain your signing passwords): ${rm} ${easEntries.map((e) => rmArg(e.display)).join(" ")}  (rn-shipyard never deletes them for you)`
       );
     }
   }
@@ -702,6 +720,7 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
                       keyAlias: androidImport.keyAlias,
                       sha256: androidImport.sha256,
                       ...(androidImport.backupPath ? { previousKeystore: toPortablePath(projectDir, androidImport.backupPath) } : {}),
+                      ...(androidImport.credentialsBackupPath ? { previousCredentials: toPortablePath(projectDir, androidImport.credentialsBackupPath) } : {}),
                     },
                   }
                 : {}),
@@ -757,41 +776,96 @@ function shellQuote(s: string): string {
   return /^[A-Za-z0-9_\-./@:+=,]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`;
 }
 
+export interface EasPlaintextEntry {
+  /** What the user sees: project-relative with "/" (trailing "/" = folder), "~/..." or absolute when outside the project */
+  display: string;
+  isDir: boolean;
+  /** Inside the project: worth a .gitignore entry and a git check */
+  inProject: boolean;
+}
+
+/** Every file under `dir` (recursive, symlinks and special files count as files), or undefined if unreadable. */
+async function filesUnder(dir: string): Promise<string[] | undefined> {
+  try {
+    const out: string[] = [];
+    for (const e of await readdir(dir, { withFileTypes: true })) {
+      const full = join(dir, e.name);
+      if (e.isDirectory()) {
+        const sub = await filesUnder(full);
+        if (!sub) return undefined;
+        out.push(...sub);
+      } else out.push(full);
+    }
+    return out;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
- * The plaintext files `eas credentials` left in the project, project-relative with "/" (a folder
- * has a trailing "/"): credentials.json plus, for every referenced file that sits in a sub-folder of
- * credentials.json's directory (credentials/android/keystore.jks), that top-level folder. Files
- * outside the project are not listed.
+ * The plaintext files `eas credentials` left behind, for the .gitignore entries, the git warnings and
+ * the delete command. INDIVIDUAL files only, with one exception: eas-cli's default `credentials/`
+ * folder (named exactly that, directly next to credentials.json) is listed as a folder when it is
+ * not inside a native dir and holds nothing but the referenced files. Never android/, ios/ or a
+ * folder in them: a user's native project must not end up in a delete command.
  */
-export function easPlaintextPaths(projectDir: string, creds: EasCredentials): string[] {
+export async function easPlaintextEntries(projectDir: string, creds: EasCredentials): Promise<EasPlaintextEntry[]> {
   const referenced = [
+    creds.file,
     creds.android?.keystorePath,
     ...(creds.ios ?? []).flatMap((t) => [t.certificatePath, t.provisioningProfilePath]),
   ].filter((p): p is string => !!p);
-  const out = new Set<string>();
-  const add = (abs: string, isDir: boolean) => {
-    const rel = relative(projectDir, abs);
-    if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) return;
-    out.add(rel.split(sep).join("/") + (isDir ? "/" : ""));
-  };
-  add(creds.file, false);
-  for (const f of referenced) {
-    const inDir = relative(creds.dir, f);
-    if (inDir.startsWith("..") || isAbsolute(inDir)) {
-      add(f, false);
-      continue;
+
+  let collapsed: string | undefined;
+  const candidate = join(creds.dir, "credentials");
+  if (!(await nativeDirContaining(projectDir, candidate))) {
+    try {
+      if ((await stat(candidate)).isDirectory()) {
+        const inside = await filesUnder(candidate);
+        const refSet = new Set(referenced);
+        if (inside && inside.length > 0 && inside.every((f) => refSet.has(f))) collapsed = candidate;
+      }
+    } catch {
+      // not a folder: list files
     }
-    const parts = inDir.split(sep);
-    if (parts.length > 1) add(join(creds.dir, parts[0]), true);
-    else add(f, false);
   }
-  return [...out];
+
+  const out: EasPlaintextEntry[] = [];
+  const seen = new Set<string>();
+  const push = (e: EasPlaintextEntry) => {
+    if (!seen.has(e.display)) {
+      seen.add(e.display);
+      out.push(e);
+    }
+  };
+  for (const abs of referenced) {
+    const target = collapsed && relative(collapsed, abs) !== "" && !relative(collapsed, abs).startsWith("..") && !isAbsolute(relative(collapsed, abs)) ? collapsed : abs;
+    const isDir = target === collapsed;
+    const rel = relative(projectDir, target);
+    if (rel !== "" && !rel.startsWith("..") && !isAbsolute(rel)) {
+      push({ display: rel.split(sep).join("/") + (isDir ? "/" : ""), isDir, inProject: true });
+    } else {
+      push({ display: toPortablePath(projectDir, target), isDir: false, inProject: false });
+    }
+  }
+  return out;
+}
+
+/** A path as a literal .gitignore line: glob characters and a leading ! or # escaped. */
+export function gitignoreLiteral(entry: string): string {
+  const escaped = entry.replace(/[*?[\]\\]/g, "\\$&");
+  return /^[!#]/.test(escaped) ? `\\${escaped}` : escaped;
+}
+
+/** Argument for a printed `rm` command: `~/` stays unquoted so the shell expands it. */
+function rmArg(display: string): string {
+  return display.startsWith("~/") ? `~/${shellQuote(display.slice(2))}` : shellQuote(display);
 }
 
 /** True when git tracks the path (a file, or anything under a folder). */
 async function isGitTracked(projectDir: string, relPath: string): Promise<boolean> {
   try {
-    const result = await exec("git", ["ls-files", "--error-unmatch", "--", relPath], { cwd: projectDir });
+    const result = await exec("git", ["ls-files", "--error-unmatch", "--", relPath], { cwd: projectDir, env: { GIT_LITERAL_PATHSPECS: "1" } });
     return result?.exitCode === 0;
   } catch {
     return false;
@@ -801,7 +875,7 @@ async function isGitTracked(projectDir: string, relPath: string): Promise<boolea
 /** True only when git is available, this is a repo, and the path is definitely not ignored. */
 async function isGitUnignored(projectDir: string, relPath: string): Promise<boolean> {
   try {
-    const result = await exec("git", ["check-ignore", "-q", "--", relPath], { cwd: projectDir });
+    const result = await exec("git", ["check-ignore", "-q", "--", relPath], { cwd: projectDir, env: { GIT_LITERAL_PATHSPECS: "1" } });
     return result?.exitCode === 1; // 0 = ignored, 128 = not a repo / error: stay silent
   } catch {
     return false;
