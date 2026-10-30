@@ -1,5 +1,5 @@
 import { readFile, writeFile, access } from "node:fs/promises";
-import { dirname, join, relative, isAbsolute } from "node:path";
+import { dirname, join, relative, isAbsolute, sep } from "node:path";
 import chalk from "chalk";
 import { parseEasConfig, parseAppConfig, profileEnvFrom, profileEnvWarnings, configFieldHint } from "../core/eas-parser.js";
 import { writeConfig, type ShipyardConfig } from "../core/config.js";
@@ -12,12 +12,16 @@ import { createLogger } from "../utils/logger.js";
 import { ShipyardError, exitCodeForError } from "../utils/errors.js";
 import { nativeDirContaining, secretInNativeDirMessage } from "../utils/native-dirs.js";
 import { printJson } from "../core/output.js";
+import { safeUrl } from "../platforms/ios/match-repo.js";
 import { createPrompter, type Prompter } from "../utils/prompt.js";
 import { exec, registerStdinReleaser } from "../utils/shell.js";
 import { isInteractive } from "../utils/interactive.js";
 import { applyExpoEnvAliases } from "../utils/apple-env.js";
 import { runPreflight } from "./preflight.js";
 import { collectSecrets } from "../utils/secrets.js";
+import { readEasCredentials, type EasCredentials } from "../core/eas-credentials.js";
+import { importAndroidKeystore, type AndroidEasImport } from "../platforms/android/eas-import.js";
+import { importIosCredentials, type IosEasImport, type IosEasImportOptions } from "../platforms/ios/eas-import.js";
 
 export interface InitOptions {
   platform: string;
@@ -29,6 +33,8 @@ export interface InitOptions {
   androidCredentials?: string;
   /** Seed the versionCode counter (e.g. EAS remote counter) so it is never reused */
   androidLastVersionCode?: string;
+  /** Import the signing credentials `eas credentials` downloaded: true = ./credentials.json, or a path */
+  fromEas?: string | boolean;
 }
 
 interface AndroidCredentialsFile {
@@ -138,8 +144,53 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
     return prompterRef.current;
   };
   const projectDir = process.cwd();
-  const doIos = opts.platform === "all" || opts.platform === "ios";
-  const doAndroid = opts.platform === "all" || opts.platform === "android";
+  let doIos = opts.platform === "all" || opts.platform === "ios";
+  let doAndroid = opts.platform === "all" || opts.platform === "android";
+
+  // --- --from-eas: read credentials.json first, so a missing file fails before any side effect ---
+  let easCreds: EasCredentials | undefined;
+  if (opts.fromEas !== undefined && opts.fromEas !== false) {
+    const conflicting = [
+      opts.androidKeystore !== undefined && "--android-keystore",
+      opts.androidCredentials !== undefined && "--android-credentials",
+    ].filter((f): f is string => !!f);
+    if (conflicting.length > 0) {
+      return fail(
+        new ShipyardError(
+          "INVALID_FLAGS",
+          `--from-eas already provides the keystore and its credentials; ${conflicting.join(", ")} would conflict`,
+          "Use either --from-eas or the --android-* flags"
+        ),
+        1
+      );
+    }
+    try {
+      easCreds = await readEasCredentials(projectDir, typeof opts.fromEas === "string" ? opts.fromEas : undefined);
+    } catch (err) {
+      if (err instanceof ShipyardError) return fail(err, err.code === "EAS_CREDENTIALS_NOT_FOUND" ? 2 : 1);
+      throw err;
+    }
+    // A platform the file has no section for is skipped: running the normal setup would generate a NEW key
+    for (const [name, present, wanted] of [
+      ["android", easCreds.android !== undefined, doAndroid],
+      ["ios", easCreds.ios !== undefined, doIos],
+    ] as const) {
+      if (!wanted || present) continue;
+      if (opts.platform === name) {
+        return fail(
+          new ShipyardError(
+            "EAS_CREDENTIALS_INVALID",
+            `${easCreds.file} has no ${name} section`,
+            `Run \`npx eas-cli credentials\`, choose ${name === "ios" ? "iOS" : "Android"}, then credentials.json -> "Download credentials from EAS to credentials.json", and re-run`
+          ),
+          1
+        );
+      }
+      logger.warn(`${easCreds.file} has no ${name} section: ${name} was not set up. Download its credentials with \`npx eas-cli credentials\` and run init --platform ${name} --from-eas`);
+      if (name === "android") doAndroid = false;
+      else doIos = false;
+    }
+  }
 
   // Requirements pre-flight (the same checks as `doctor`) for the selected platforms. init creates
   // .shipyard/config.json and the signing setup, so those checks are left out.
@@ -219,6 +270,33 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
         1
       );
     }
+  }
+
+  // --- --from-eas, Android: verify and copy the EAS keystore, then take the same path as
+  // --android-keystore + --android-credentials (config gets ~/-portable paths) ---
+  let androidImport: AndroidEasImport | undefined;
+  if (easCreds?.android && doAndroid) {
+    androidImport = await importAndroidKeystore({
+      creds: easCreds.android,
+      slug: appConfig.slug,
+      confirmReplace: interactive
+        ? async (existing) => {
+            const answer = await getPrompter().ask(
+              `A different keystore already exists at ${toPortablePath(projectDir, existing)}. Replace it? The old file is kept as a .bak copy (y/N)`,
+              "n"
+            );
+            return /^y(es)?$/i.test(answer.trim());
+          }
+        : undefined,
+    });
+    opts = { ...opts, androidKeystore: androidImport.keystorePath, androidCredentials: androidImport.credentialsPath };
+    logger.success(
+      androidImport.unchanged
+        ? `EAS keystore already in ${toPortablePath(projectDir, androidImport.dir)}/`
+        : `Copied the EAS keystore to ${toPortablePath(projectDir, androidImport.keystorePath)} (mode 600)`
+    );
+    if (androidImport.backupPath) logger.warn(`The previous keystore was kept as ${toPortablePath(projectDir, androidImport.backupPath)}`);
+    logger.success(`Upload key certificate SHA-256 (alias ${androidImport.keyAlias}): ${androidImport.sha256}`);
   }
 
   // Existing Android credentials file: read once, validate before any side effect
@@ -304,6 +382,7 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
   };
 
   // --- iOS Setup ---
+  let iosImportPlan: Omit<IosEasImportOptions, "projectDir" | "interactive" | "stream"> | undefined;
   if (doIos) {
     logger.info("Setting up iOS...");
 
@@ -361,7 +440,24 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
 
     // Run Match setup
     const matchPassword = process.env.MATCH_PASSWORD;
-    if (matchPassword) {
+    if (easCreds?.ios) {
+      // --from-eas: the import into the Match repo runs after the Fastfile (which has its lane) is written
+      let password = matchPassword ?? "";
+      if (!password && interactive) {
+        password = await getPrompter().askSecret("Match password (encrypts the certificates in the Match repo)");
+      }
+      if (!password) {
+        return fail(
+          new ShipyardError(
+            "MISSING_CONFIG_IOS",
+            "MATCH_PASSWORD is not set",
+            "Set MATCH_PASSWORD (the passphrase that encrypts your Match repo; choose one if the repo is new) or run without --non-interactive to be asked"
+          ),
+          2
+        );
+      }
+      iosImportPlan = { targets: easCreds.ios, gitUrl: matchGitUrl, teamId, bundleId, matchPassword: password };
+    } else if (matchPassword) {
       logger.info("Running Fastlane Match to set up code signing...");
       const matchResult = await setupMatch({
         gitUrl: matchGitUrl,
@@ -525,6 +621,18 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
     }
   }
 
+  // --- --from-eas: the plaintext EAS files left in the project (reported, never deleted by us) ---
+  const easFiles = easCreds ? easPlaintextPaths(projectDir, easCreds) : [];
+  if (easCreds) {
+    for (const f of easFiles) {
+      if (await isGitTracked(projectDir, f)) {
+        logger.warn(`${f} holds your signing passwords/keys and is tracked by git. Untrack it: git rm -r --cached -- ${shellQuote(f)}`);
+      } else if (await isGitUnignored(projectDir, f)) {
+        logger.warn(`${f} holds your signing passwords/keys and was not git-ignored. rn-shipyard adds it to .gitignore`);
+      }
+    }
+  }
+
   // --- Write config ---
   await writeConfig(projectDir, config);
   logger.success("Created .shipyard/config.json");
@@ -536,10 +644,45 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
   logger.success("Generated fastlane/ files");
 
   // --- Update .gitignore ---
-  await updateGitignore(projectDir);
+  await updateGitignore(projectDir, easFiles);
   logger.success("Updated .gitignore");
   if (await ensureShipyardGitignore(projectDir)) {
     logger.success("Wrote .shipyard/.gitignore");
+  }
+
+  // --- --from-eas, iOS: import into the Match repo (pushes to it; may prompt on the terminal) ---
+  let iosImport: IosEasImport | undefined;
+  if (iosImportPlan) {
+    logger.info("Importing the EAS distribution certificate and provisioning profile(s) into the Match repository...");
+    iosImport = await importIosCredentials({ ...iosImportPlan, projectDir, interactive, stream: !opts.json });
+    for (const w of iosImport.warnings) logger.warn(w);
+    for (const t of iosImport.targets) {
+      logger.success(
+        `Imported ${t.target}${t.bundleId ? ` (${t.bundleId})` : ""}: certificate SHA-256 ${t.certificateSha256}, expires ${t.certificateExpires}`
+      );
+    }
+  }
+
+  // --- Next steps after an import ---
+  const nextSteps: string[] = [];
+  if (easCreds) {
+    if (androidImport) {
+      nextSteps.push(
+        `Compare the Android upload key SHA-256 (${androidImport.sha256}) with Google Play Console > your app > Test and release > App integrity > App signing > Upload key certificate. They must be identical`
+      );
+      if (opts.androidLastVersionCode === undefined) {
+        nextSteps.push(
+          "If EAS managed your versionCode, seed the counter so it is never reused: rn-shipyard init --platform android --from-eas --android-last-version-code <highest versionCode EAS used>"
+        );
+      }
+    }
+    const built = [config.platforms.ios ? "ios" : undefined, config.platforms.android ? "android" : undefined].filter(Boolean);
+    if (built.length > 0) nextSteps.push(`Build once to confirm the imported credentials work: rn-shipyard build --platform ${built.length === 2 ? "all" : built[0]}`);
+    if (easFiles.length > 0) {
+      nextSteps.push(
+        `After that build works, delete the plaintext EAS files (they contain your signing passwords): rm -r -- ${easFiles.map(shellQuote).join(" ")}  (check the folder first; rn-shipyard never deletes them for you)`
+      );
+    }
   }
 
   // --- Output summary ---
@@ -547,6 +690,39 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
     printJson({
       success: true,
       config: portableForOutput(projectDir, config),
+      ...(easCreds
+        ? {
+            imported: {
+              source: toPortablePath(projectDir, easCreds.file),
+              ...(androidImport
+                ? {
+                    android: {
+                      keystore: toPortablePath(projectDir, androidImport.keystorePath),
+                      credentials: toPortablePath(projectDir, androidImport.credentialsPath),
+                      keyAlias: androidImport.keyAlias,
+                      sha256: androidImport.sha256,
+                      ...(androidImport.backupPath ? { previousKeystore: toPortablePath(projectDir, androidImport.backupPath) } : {}),
+                    },
+                  }
+                : {}),
+              ...(iosImport
+                ? {
+                    ios: {
+                      matchGitUrl: safeUrl(config.platforms.ios?.matchGitUrl ?? ""),
+                      targets: iosImport.targets.map((t) => ({
+                        target: t.target,
+                        bundleId: t.bundleId,
+                        certificateSha256: t.certificateSha256,
+                        certificateExpires: t.certificateExpires,
+                      })),
+                    },
+                  }
+                : {}),
+            },
+            plaintextFiles: easFiles,
+            nextSteps,
+          }
+        : {}),
       ...(logger.warnings.length > 0 ? { warnings: logger.warnings } : {}),
       files: [
         ".shipyard/config.json",
@@ -567,7 +743,58 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
       console.log(`  ${chalk.green("✓")} Android: Keystore ready`);
     }
     console.log("");
-    console.log(chalk.dim(`  Next: rn-shipyard build --platform ${opts.platform}`));
+    if (easCreds) {
+      console.log(chalk.bold("  Next steps"));
+      nextSteps.forEach((step, i) => console.log(`  ${i + 1}. ${step}`));
+    } else {
+      console.log(chalk.dim(`  Next: rn-shipyard build --platform ${opts.platform}`));
+    }
+  }
+}
+
+/** POSIX single-quote quoting, for commands we print for the user to copy. */
+function shellQuote(s: string): string {
+  return /^[A-Za-z0-9_\-./@:+=,]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`;
+}
+
+/**
+ * The plaintext files `eas credentials` left in the project, project-relative with "/" (a folder
+ * has a trailing "/"): credentials.json plus, for every referenced file that sits in a sub-folder of
+ * credentials.json's directory (credentials/android/keystore.jks), that top-level folder. Files
+ * outside the project are not listed.
+ */
+export function easPlaintextPaths(projectDir: string, creds: EasCredentials): string[] {
+  const referenced = [
+    creds.android?.keystorePath,
+    ...(creds.ios ?? []).flatMap((t) => [t.certificatePath, t.provisioningProfilePath]),
+  ].filter((p): p is string => !!p);
+  const out = new Set<string>();
+  const add = (abs: string, isDir: boolean) => {
+    const rel = relative(projectDir, abs);
+    if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) return;
+    out.add(rel.split(sep).join("/") + (isDir ? "/" : ""));
+  };
+  add(creds.file, false);
+  for (const f of referenced) {
+    const inDir = relative(creds.dir, f);
+    if (inDir.startsWith("..") || isAbsolute(inDir)) {
+      add(f, false);
+      continue;
+    }
+    const parts = inDir.split(sep);
+    if (parts.length > 1) add(join(creds.dir, parts[0]), true);
+    else add(f, false);
+  }
+  return [...out];
+}
+
+/** True when git tracks the path (a file, or anything under a folder). */
+async function isGitTracked(projectDir: string, relPath: string): Promise<boolean> {
+  try {
+    const result = await exec("git", ["ls-files", "--error-unmatch", "--", relPath], { cwd: projectDir });
+    return result?.exitCode === 0;
+  } catch {
+    return false;
   }
 }
 
@@ -600,7 +827,7 @@ function portableForOutput(projectDir: string, config: ShipyardConfig): Shipyard
   };
 }
 
-async function updateGitignore(projectDir: string): Promise<void> {
+async function updateGitignore(projectDir: string, extraEntries: string[] = []): Promise<void> {
   const gitignorePath = join(projectDir, ".gitignore");
   let content = "";
 
@@ -623,6 +850,7 @@ async function updateGitignore(projectDir: string): Promise<void> {
     "credentials.json",
     "fastlane/report.xml",
     "fastlane/README.md",
+    ...extraEntries,
   ];
 
   const present = new Set(content.split(/\r?\n/).map((l) => l.trim()));
