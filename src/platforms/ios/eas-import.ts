@@ -2,7 +2,7 @@ import { mkdtemp, rm, chmod, readFile, writeFile, access } from "node:fs/promise
 import { rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { randomBytes, X509Certificate } from "node:crypto";
+import { X509Certificate } from "node:crypto";
 import type { EasIosTargetCredentials } from "../../core/eas-credentials.js";
 import { exec, redactSecrets } from "../../utils/shell.js";
 import { registerCleanup } from "../../utils/cleanup.js";
@@ -60,18 +60,23 @@ async function openssl(args: string[], env: Record<string, string>, redact: stri
 }
 
 /**
- * EAS's dist-cert.p12 has a password; match imports its p12 with an EMPTY one. So: read the EAS
- * p12 (password via -passin env:, never argv), and write the certificate as DER (.cer, which match
- * import needs next to the .p12) and the key + certificate as a passwordless p12.
+ * EAS's dist-cert.p12 has a password. Match never stores a PKCS#12: fastlane's cert runner
+ * (cert/runner.rb) writes the RAW RSA private key as a traditional PEM ("BEGIN RSA PRIVATE KEY")
+ * and merely names it <id>.p12; keychain_importer then runs `security import <file> -P ''`.
+ * macOS 26 rejects OpenSSL 3+/4 PKCS#12 files (AES / SHA-256 MAC) and PKCS#8 PEM ("Unknown
+ * format"), but imports the traditional PEM. So: read the EAS p12 (password via -passin env:),
+ * write the certificate as DER (.cer, which match import needs) and the key as an UNENCRYPTED
+ * traditional RSA PEM handed to match import as its "p12". Non-RSA keys are refused (Apple
+ * distribution keys are RSA 2048).
  *
- * Details that matter:
- *  - One openssl binary for every step (an encrypted PEM written by LibreSSL is not readable by
- *    OpenSSL 3+ and the other way round).
- *  - OpenSSL 3+ cannot read the RC2-40 certificate bags old p12s use without `-legacy`: try
- *    without, then with it (LibreSSL has no such flag, and does not need it).
- *  - The key travels between the steps in an encrypted PEM (random passphrase, via env), so no
- *    plaintext private key ever touches the disk.
- *  - The output uses 3DES + SHA-1 MAC, which macOS `security import` reads (it rejects AES-256).
+ * Details:
+ *  - One openssl binary for every step.
+ *  - OpenSSL 3+ cannot read the RC2-40 bags old p12s use without `-legacy`: try without, then
+ *    with it (LibreSSL has no such flag and does not need it).
+ *  - OpenSSL 3+/4 writes PKCS#8 unless `rsa -traditional`; LibreSSL writes traditional and does
+ *    not know the flag. Try with it, then without.
+ *  - The plaintext key exists only inside the 0700 workdir (same exposure as fastlane's own
+ *    cert flow); the caller removes the workdir on success, failure and signals.
  */
 export async function extractCertificate(
   target: EasIosTargetCredentials,
@@ -79,9 +84,8 @@ export async function extractCertificate(
   index: number,
   redact: string[]
 ): Promise<CertFiles> {
-  const pemPass = randomBytes(24).toString("hex");
-  redact.push(pemPass, target.certificatePassword);
-  const env = { SHIPYARD_EAS_P12_PASSWORD: target.certificatePassword, SHIPYARD_EAS_PEM_PASSWORD: pemPass };
+  redact.push(target.certificatePassword);
+  const env = { SHIPYARD_EAS_P12_PASSWORD: target.certificatePassword };
   const base = `cert${index}`;
   const keyPem = join(workdir, `${base}.key.pem`);
   const leafPem = join(workdir, `${base}.leaf.pem`);
@@ -93,8 +97,7 @@ export async function extractCertificate(
   let lastFailure = "";
   for (const candidate of [[], ["-legacy"]]) {
     const r = await openssl(
-      ["pkcs12", ...candidate, "-in", target.certificatePath, "-passin", "env:SHIPYARD_EAS_P12_PASSWORD",
-       "-nocerts", "-passout", "env:SHIPYARD_EAS_PEM_PASSWORD", "-out", keyPem],
+      ["pkcs12", ...candidate, "-in", target.certificatePath, "-passin", "env:SHIPYARD_EAS_P12_PASSWORD", "-nocerts", "-nodes", "-out", keyPem],
       env, redact
     );
     if (r.exitCode === 0) {
@@ -112,13 +115,28 @@ export async function extractCertificate(
       fix
     );
   }
+  await chmod(keyPem, 0o600);
+
+  // key -> unencrypted traditional RSA PEM (what match stores and `security import` reads)
+  let keyOk = false;
+  for (const flags of [["-traditional"], []]) {
+    const r = await openssl(["rsa", ...flags, "-in", keyPem, "-out", p12Path], env, redact);
+    if (r.exitCode === 0) {
+      keyOk = true;
+      break;
+    }
+  }
+  if (!keyOk) {
+    throw extractError(
+      `The distribution key of target "${target.name}" is not an RSA key`,
+      "Apple distribution certificates use RSA 2048 keys; download the credentials again, or create a new distribution certificate"
+    );
+  }
+  await rm(keyPem, { force: true });
 
   const steps: string[][] = [
     ["pkcs12", ...mode, "-in", target.certificatePath, "-passin", "env:SHIPYARD_EAS_P12_PASSWORD", "-clcerts", "-nokeys", "-out", leafPem],
     ["x509", "-in", leafPem, "-outform", "DER", "-out", cerPath],
-    // empty export password: it is not secret, and match import expects exactly this
-    ["pkcs12", ...mode, "-export", "-inkey", keyPem, "-passin", "env:SHIPYARD_EAS_PEM_PASSWORD", "-in", leafPem,
-     "-passout", "pass:", "-certpbe", "PBE-SHA1-3DES", "-keypbe", "PBE-SHA1-3DES", "-macalg", "sha1", "-out", p12Path],
   ];
   for (const args of steps) {
     const r = await openssl(args, env, redact);
@@ -126,7 +144,7 @@ export async function extractCertificate(
       throw extractError(`openssl failed while converting the distribution certificate of target "${target.name}" (${args[0]})`, fix);
     }
   }
-  await Promise.all([chmod(keyPem, 0o600), chmod(leafPem, 0o600), chmod(cerPath, 0o600), chmod(p12Path, 0o600)]);
+  await Promise.all([chmod(leafPem, 0o600), chmod(cerPath, 0o600), chmod(p12Path, 0o600)]);
 
   let info: X509Certificate;
   try {

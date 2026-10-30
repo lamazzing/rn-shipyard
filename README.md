@@ -158,7 +158,7 @@ rn-shipyard init --platform android \
 rn-shipyard init --from-eas          # reads ./credentials.json; or --from-eas path/to/credentials.json
 ```
 
-Android: the keystore is verified with `keytool`, copied to `~/.config/rn-shipyard/<slug>/` (folder `700`, files `600`) and wired into `.shipyard/config.json`. Compare the printed SHA-256 with Play Console > App integrity > Upload key certificate. iOS: the distribution certificate and provisioning profile(s) are converted in a private temp folder and imported into your Match repo with `fastlane match import` (it commits and pushes, needs `MATCH_GIT_URL`, `APPLE_TEAM_ID`, `MATCH_PASSWORD` and an Apple login). When a build works, delete `credentials.json` and `credentials/` yourself: they hold your passwords in plain text. rn-shipyard never deletes them.
+Android: the keystore is verified with `keytool`, copied to `~/.config/rn-shipyard/<slug>/` (folder `700`, files `600`) and wired into `.shipyard/config.json`. Compare the printed SHA-256 with Play Console > App integrity > Upload key certificate. iOS: the distribution certificate and provisioning profile(s) are converted in a private temp folder and imported into your Match repo with `fastlane match import` (it commits and pushes, needs `MATCH_GIT_URL`, `APPLE_TEAM_ID`, `MATCH_PASSWORD` and an Apple login). App-extension profiles are imported too, but `build` only fetches the main bundle ID's profile (known limitation). When a build works, delete `credentials.json` and `credentials/` yourself: they hold your passwords in plain text. rn-shipyard never deletes them.
 
 More: [Migrating from EAS](https://lamazzing.github.io/rn-shipyard/guides/migrating-from-eas/) · [Dynamic config](https://lamazzing.github.io/rn-shipyard/guides/dynamic-config/)
 

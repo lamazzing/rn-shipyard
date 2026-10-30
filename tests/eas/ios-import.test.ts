@@ -26,6 +26,8 @@ let fastlaneCall: { args: string[]; opts: any } | undefined;
 let workdirs: string[];
 let opensslFailsWithoutLegacy: boolean;
 let fastlaneExit: number;
+let rsaTraditionalUnsupported = false;
+let rsaAlwaysFails = false;
 let entriesSeen: Array<{ cer: string; p12: string; profile: string }>;
 let entriesMode: number;
 
@@ -40,6 +42,8 @@ beforeEach(async () => {
   workdirs = [];
   opensslFailsWithoutLegacy = false;
   fastlaneExit = 0;
+  rsaTraditionalUnsupported = false;
+  rsaAlwaysFails = false;
   project = await realpath(await mkdtemp(join(tmpdir(), "shipyard-easios-")));
   await mkdir(join(project, "fastlane"));
   await writeFile(join(project, "fastlane", "Fastfile"), `lane :${MATCH_IMPORT_LANE} do\nend\n`);
@@ -52,6 +56,9 @@ beforeEach(async () => {
     if (cmd === "openssl") {
       if (opensslFailsWithoutLegacy && args[0] === "pkcs12" && !args.includes("-legacy") && args.includes("-nocerts")) {
         return { exitCode: 1, stdout: "", stderr: "unsupported" };
+      }
+      if (args[0] === "rsa" && (rsaAlwaysFails || (rsaTraditionalUnsupported && args.includes("-traditional")))) {
+        return { exitCode: 1, stdout: "", stderr: "unknown option" };
       }
       const out = args[args.indexOf("-out") + 1];
       workdirs.push(dirname(out));
@@ -84,38 +91,54 @@ const base = () => ({
 const exists = (p: string) => access(p).then(() => true, () => false);
 
 describe("extractCertificate (openssl)", () => {
-  it("reads the p12 password and the key passphrase from the environment, never argv; output is a passwordless p12", async () => {
+  it("reads the p12 password from the environment, never argv; the key becomes an unencrypted traditional RSA PEM", async () => {
     const wd = await realpath(await mkdtemp(join(tmpdir(), "shipyard-easwd-")));
     const redact: string[] = [];
     const r = await extractCertificate(tgt("app", files.profile, files.p12), wd, 0, redact);
     expect(r.sha256).toBe(SHA256);
+    expect(redact).toContain(P12_PW);
     const calls = vi.mocked(exec).mock.calls.filter((c) => c[0] === "openssl");
-    expect(calls.length).toBe(4); // key, leaf, cer, export
-    const pemPass = redact.find((s) => s !== P12_PW)!;
-    expect(pemPass).toMatch(/^[0-9a-f]{48}$/);
+    expect(calls.map((c) => (c[1] as string[])[0])).toEqual(["pkcs12", "rsa", "pkcs12", "x509"]);
     for (const [, args, o] of calls) {
-      const argv = args.join(" ");
-      expect(argv).not.toContain(P12_PW);
-      expect(argv).not.toContain(pemPass);
-      expect(o!.redact).toEqual(expect.arrayContaining([P12_PW, pemPass]));
+      expect((args as string[]).join(" ")).not.toContain(P12_PW);
+      expect(o!.redact).toEqual(expect.arrayContaining([P12_PW]));
       expect(o!.foreground).toBeUndefined();
     }
-    const exp = calls[3][1];
-    expect(exp).toEqual(expect.arrayContaining(["-export", "-passout", "pass:", "-certpbe", "PBE-SHA1-3DES", "-keypbe", "PBE-SHA1-3DES", "-macalg", "sha1"]));
-    expect(calls[0][2]!.env).toMatchObject({ SHIPYARD_EAS_P12_PASSWORD: P12_PW, SHIPYARD_EAS_PEM_PASSWORD: pemPass });
-    expect(calls[0][1]).toEqual(expect.arrayContaining(["-passin", "env:SHIPYARD_EAS_P12_PASSWORD", "-passout", "env:SHIPYARD_EAS_PEM_PASSWORD"]));
+    expect(calls[0][1]).toEqual(expect.arrayContaining(["-passin", "env:SHIPYARD_EAS_P12_PASSWORD", "-nocerts", "-nodes"]));
+    expect(calls[0][2]!.env).toMatchObject({ SHIPYARD_EAS_P12_PASSWORD: P12_PW });
+    // no PKCS#12 is written: the "p12" handed to match is the traditional RSA key
+    expect(calls[1][1]).toEqual(expect.arrayContaining(["rsa", "-traditional", "-out", r.p12Path]));
+    expect(calls.some((c) => (c[1] as string[]).includes("-export"))).toBe(false);
+    // the intermediate (possibly PKCS#8) key file is deleted right away
+    expect(await exists(join(wd, "cert0.key.pem"))).toBe(false);
   });
 
-  it("retries with -legacy (OpenSSL 3+ and old RC2 p12s) and keeps it for every later step", async () => {
+  it("LibreSSL (no -traditional flag): falls back to plain `rsa`", async () => {
+    rsaTraditionalUnsupported = true;
+    const wd = await realpath(await mkdtemp(join(tmpdir(), "shipyard-easwd-")));
+    await extractCertificate(tgt("app", files.profile, files.p12), wd, 0, []);
+    const rsa = vi.mocked(exec).mock.calls.filter((c) => c[0] === "openssl" && (c[1] as string[])[0] === "rsa").map((c) => c[1] as string[]);
+    expect(rsa.length).toBe(2);
+    expect(rsa[0]).toContain("-traditional");
+    expect(rsa[1]).not.toContain("-traditional");
+  });
+
+  it("a non-RSA key is refused with a clear error", async () => {
+    rsaAlwaysFails = true;
+    const wd = await realpath(await mkdtemp(join(tmpdir(), "shipyard-easwd-")));
+    const err = await extractCertificate(tgt("app", files.profile, files.p12), wd, 0, []).catch((e) => e);
+    expect(err.code).toBe("EAS_IOS_EXTRACT_FAILED");
+    expect(err.message).toContain("not an RSA key");
+  });
+
+  it("retries with -legacy (OpenSSL 3+ and old RC2 p12s) and keeps it for the certificate step", async () => {
     opensslFailsWithoutLegacy = true;
     const wd = await realpath(await mkdtemp(join(tmpdir(), "shipyard-easwd-")));
     await extractCertificate(tgt("app", files.profile, files.p12), wd, 0, []);
     const calls = vi.mocked(exec).mock.calls.filter((c) => c[0] === "openssl").map((c) => c[1] as string[]);
-    expect(calls.length).toBe(5);
     expect(calls[0]).not.toContain("-legacy");
     expect(calls[1]).toContain("-legacy");
-    expect(calls[2]).toContain("-legacy"); // leaf
-    expect(calls[4]).toContain("-legacy"); // export (reads the key PEM written under legacy)
+    expect(calls.find((c) => c.includes("-clcerts"))).toContain("-legacy");
   });
 
   it("wrong p12 password: EAS_IOS_EXTRACT_FAILED without the password", async () => {
@@ -167,7 +190,7 @@ describe("importIosCredentials", () => {
     expect(entriesSeen[0].cer).toBe(entriesSeen[1].cer);
     expect(entriesSeen[0].p12).toMatch(/shipyard-eas-ios-.*cert0\.p12$/);
     expect(entriesMode).toBe(0o600);
-    expect(vi.mocked(exec).mock.calls.filter((c) => c[0] === "openssl").length).toBe(4); // converted once
+    expect(vi.mocked(exec).mock.calls.filter((c) => c[0] === "openssl").length).toBe(4); // converted once (key, rsa, leaf, cer)
   });
 
   it("warns when no imported profile is for the app's bundle id", async () => {

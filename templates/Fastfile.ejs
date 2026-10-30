@@ -41,7 +41,7 @@ platform :ios do
   lane :shipyard_match_import do
     require "json"
     require "match"
-    # rn-shipyard converts the EAS distribution certificate (.cer + passwordless .p12) in a private temp
+    # rn-shipyard converts the EAS distribution certificate (.cer + the private key as a traditional RSA PEM, which is what match stores as its .p12) in a private temp
     # directory and lists them in a JSON file: [{ "cer": ..., "p12": ..., "profile": ... }]. Secrets
     # (MATCH_PASSWORD, git auth) arrive through the environment, never in arguments.
     entries_file = ENV["SHIPYARD_IMPORT_ENTRIES_FILE"].to_s

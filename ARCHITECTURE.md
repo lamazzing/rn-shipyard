@@ -38,7 +38,7 @@ rn-shipyard/
 │   │   │   ├── build.ts            # iOS build via Fastlane gym
 │   │   │   ├── submit.ts           # iOS submit via Fastlane pilot
 │   │   │   ├── signing.ts          # Match setup and cert management
-│   │   │   ├── eas-import.ts       # init --from-eas: openssl p12 -> .cer + passwordless p12, fastlane match import
+│   │   │   ├── eas-import.ts       # init --from-eas: openssl p12 -> .cer + RSA key PEM, fastlane match import
 │   │   │   ├── workspace.ts        # Detect the single ios/*.xcworkspace + scheme
 │   │   │   └── doctor.ts           # iOS-specific env checks
 │   │   └── android/
@@ -342,10 +342,10 @@ Data flow:
   `--android-credentials`, so `.shipyard/config.json` gets `~/` paths. A different existing keystore is never
   overwritten without confirmation (interactive only, the old file becomes `.bak-<time>`).
 - iOS: in a 0700 `mkdtemp` workdir (cleanup registry: removed on success, failure, signals) `openssl pkcs12` reads the
-  EAS p12 (password via `-passin env:`), keeps the key in an encrypted PEM (random passphrase via env), writes the leaf as
-  DER `.cer` and re-exports a **passwordless** p12 (PBE-SHA1-3DES, SHA-1 MAC: macOS `security import` rejects AES-256),
-  because `Match::Importer#import_cert(params, cert_path:, p12_path:, profile_path:)` needs both files and match later
-  imports its p12 with an empty password. One openssl binary for all steps; `-legacy` is retried for OpenSSL 3+ (RC2-40 bags).
+  EAS p12 (password via `-passin env:`), writes the leaf as DER `.cer` and the key as an UNENCRYPTED traditional RSA PEM (`openssl rsa -traditional`, plain `rsa` on
+  LibreSSL; non-RSA refused), passed as the "p12" of `Match::Importer#import_cert(params, cert_path:, p12_path:, profile_path:)`.
+  This is what match itself stores (fastlane cert/runner.rb writes `pkey.to_pem` as `<id>.p12`) and macOS 26 imports it with
+  `security import -P ''`, whereas OpenSSL 3+/4 PKCS#12 files (AES/SHA-256 MAC) and PKCS#8 PEM are rejected. The plaintext key lives only in the 0700 workdir. One openssl binary for all steps; `-legacy` is retried for OpenSSL 3+ (RC2-40 bags).
   The internal lane `shipyard_match_import` (Fastfile.ejs) calls `import_cert` once per provisioning profile, with
   the Matchfile config; it contacts the developer portal to match the certificate (stored as `certs/distribution/<cert id>.cer|p12`,
   `profiles/appstore/AppStore_<bundle id>.mobileprovision`), encrypts with `MATCH_PASSWORD`, commits and pushes. It runs

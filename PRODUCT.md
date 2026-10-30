@@ -47,7 +47,7 @@ Flags:
 
 Import EAS credentials (`--from-eas`, default `./credentials.json`):
 - Android: verifies the EAS keystore with keytool, copies it to `~/.config/rn-shipyard/<slug>/` (0700/0600), prints the SHA-256 upload-key fingerprint, configures the keystore + credentials paths
-- iOS: converts the EAS distribution certificate (`.cer` + passwordless `.p12`) and imports it with every target's provisioning profile into the Match repo via `fastlane match import`
+- iOS: converts the EAS distribution certificate (`.cer` + the private key as the traditional RSA PEM match stores) and imports it with every target's provisioning profile into the Match repo via `fastlane match import`
 - Never modifies or deletes the user's files; prints the command to delete the plaintext EAS files once a build works
 - This is a credentials import, not the config migration wizard of Out of Scope #10 (which concerns `eas.json`)
 
