@@ -1,6 +1,6 @@
 {
   "name": "rn-shipyard",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Build and submit Expo apps locally on your Mac using Fastlane, a local alternative to EAS Build and Submit",
   "main": "dist/index.js",
   "bin": {
