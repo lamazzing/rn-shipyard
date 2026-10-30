@@ -34,5 +34,5 @@ jobs:
           path-to-signatures: signatures/version1/cla.json
           path-to-document: https://github.com/lamazzing/rn-shipyard/blob/main/CLA.md
           branch: cla-signatures
-          allowlist: lamazzing,*[bot]
+          allowlist: lamazzing,dependabot[bot],github-actions[bot]
           custom-pr-sign-comment: I have read the CLA Document and I hereby sign the CLA
