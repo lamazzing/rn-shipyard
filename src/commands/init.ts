@@ -928,7 +928,7 @@ async function updateGitignore(projectDir: string, extraEntries: string[] = []):
   ];
 
   const present = new Set(content.split(/\r?\n/).map((l) => l.trim()));
-  const linesToAdd = entries.filter((e) => !present.has(e));
+  const linesToAdd = [...new Set(entries)].filter((e) => !present.has(e));
   if (linesToAdd.length > 0) {
     const suffix = content.endsWith("\n") ? "" : "\n";
     await writeFile(gitignorePath, content + suffix + linesToAdd.join("\n") + "\n");
