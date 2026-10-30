@@ -3,9 +3,17 @@
   <rect y="540" width="1200" height="90" fill="#ff6a1a"/>
   <g transform="translate(80 80) scale(3)">
     <rect width="48" height="48" rx="10" fill="#162540"/>
-    <path d="M17 8v20M17 10h14l-3.5 5" fill="none" stroke="#ff6a1a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M31 10v7" stroke="#ff6a1a" stroke-width="2" stroke-linecap="round"/>
-    <path d="M6 30h36l-5.5 11h-25z" fill="#ff6a1a"/>
+  <g fill="#ff6a1a">
+    <rect x="9" y="8" width="4" height="32" rx="1"/>
+    <rect x="35" y="8" width="4" height="32" rx="1"/>
+    <rect x="9" y="11" width="30" height="3.5"/>
+    <rect x="20.5" y="14.5" width="7" height="2.5" rx="0.75"/>
+    <rect x="17" y="21" width="14" height="14" rx="3.5"/>
+  </g>
+  <g fill="#f5f1e8">
+    <rect x="23.25" y="17" width="1.5" height="4"/>
+    <rect x="20.5" y="24.5" width="7" height="7" rx="1.5"/>
+  </g>
   </g>
   <text x="260" y="190" font-family="Helvetica, Arial, sans-serif" font-size="72" font-weight="700" fill="#ffffff">rn-shipyard</text>
   <text x="80" y="340" font-family="Helvetica, Arial, sans-serif" font-size="64" font-weight="700" fill="#ffffff">Skip the EAS queue.</text>
