@@ -1,4 +1,5 @@
-import { exec, type ExecOptions } from "../utils/shell.js";
+import { exec, redactSecrets } from "../utils/shell.js";
+import { collectSecrets } from "../utils/secrets.js";
 import { ShipyardError } from "../utils/errors.js";
 
 export interface FastlaneResult {
@@ -8,20 +9,34 @@ export interface FastlaneResult {
   durationSeconds: number;
 }
 
+export function fastlaneArgs(
+  platform: "ios" | "android",
+  lane: string,
+  options: Record<string, string | undefined> = {}
+): string[] {
+  const args: string[] = [platform, lane];
+  for (const [key, value] of Object.entries(options)) {
+    if (value !== undefined && value !== "") args.push(`${key}:${value}`);
+  }
+  return args;
+}
+
+/**
+ * Phase 2: fastlane always runs piped (stdin ignored, redacted output, non-interactive env).
+ * Anything that needs a prompt happens before, in the foreground (see exec's `foreground`).
+ */
 export async function runFastlane(
   platform: "ios" | "android",
   lane: string,
   options: Record<string, string> = {},
-  execOpts: { json?: boolean; projectDir?: string; env?: Record<string, string> } = {}
-): Promise<FastlaneResult> {
-  const args = [platform, lane];
-
-  // Convert options to fastlane key:value format
-  for (const [key, value] of Object.entries(options)) {
-    if (value !== undefined && value !== "") {
-      args.push(`${key}:${value}`);
-    }
+  execOpts: {
+    json?: boolean;
+    projectDir?: string;
+    env?: Record<string, string>;
+    redact?: string[];
   }
+): Promise<FastlaneResult> {
+  const args = fastlaneArgs(platform, lane, options);
 
   const startTime = Date.now();
 
@@ -30,6 +45,8 @@ export async function runFastlane(
       cwd: execOpts.projectDir ?? process.cwd(),
       stream: !execOpts.json,
       env: execOpts.env,
+      redact: execOpts.redact,
+      detached: true, // own process group: killed with rn-shipyard on SIGINT/SIGTERM/SIGHUP
     });
 
     const durationSeconds = Math.round((Date.now() - startTime) / 1000);
@@ -54,7 +71,10 @@ export async function runFastlane(
     return {
       success: false,
       exitCode: 1,
-      output: err instanceof Error ? err.message : String(err),
+      output: redactSecrets(
+        err instanceof Error ? err.message : String(err),
+        collectSecrets({ ...process.env, ...execOpts.env }, execOpts.redact)
+      ),
       durationSeconds,
     };
   }

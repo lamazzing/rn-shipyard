@@ -7,3 +7,17 @@ output/
 *.apk
 .shipyard/android/*.keystore
 .shipyard/android/*.jks
+
+# Credentials — never commit. Google Play service-account keys, App Store
+# Connect API keys, signing certs, and provisioning profiles.
+*-service-account*.json
+play-service-account.json
+rn-shipyard-*.json
+*.p8
+*.p12
+*.mobileprovision
+
+# Website (Astro)
+website/node_modules
+website/dist
+website/.astro

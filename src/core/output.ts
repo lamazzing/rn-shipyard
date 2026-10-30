@@ -1,4 +1,5 @@
 import Table from "cli-table3";
+import { writeJsonStdout } from "../utils/terminal.js";
 
 export function formatResult(data: unknown, jsonMode: boolean): string {
   if (jsonMode) {
@@ -29,5 +30,5 @@ export function formatTable(
 }
 
 export function printJson(data: unknown): void {
-  console.log(JSON.stringify(data, null, 2));
+  writeJsonStdout(JSON.stringify(data, null, 2) + "\n");
 }

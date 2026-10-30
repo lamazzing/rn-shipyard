@@ -1,0 +1,124 @@
+---
+title: "rn-shipyard — build and submit Expo apps on your Mac, no queue"
+description: Build and submit Expo apps from your own Mac with Fastlane. No queue, no subscription, no Expo account. Reads your eas.json.
+template: splash
+head:
+  - tag: title
+    content: "rn-shipyard — build and submit Expo apps on your Mac, no queue"
+hero:
+  title: Skip the EAS queue
+  tagline: Build and submit Expo apps from your own Mac, starting the moment you hit enter. No queue, no subscription, no Expo account.
+  image:
+    html: |
+      <figure class="term" aria-label="Example terminal session">
+        <div class="term-bar"><i></i><i></i><i></i><span>~/my-expo-app</span></div>
+        <pre class="term-body"><code><span class="l l1"><b>$</b> npx rn-shipyard build --platform android</span><span class="l l2"><em>✓</em> expo prebuild</span><span class="l l3"><em>✓</em> gradle bundleRelease</span><span class="l l4"><em>✓</em> signed with your keystore</span><span class="l l5"><em>✓</em> app-release.aab  built locally in 4m 12s</span><span class="l l6">queue time: 0s</span></code></pre>
+        <figcaption>Example run. Timing is illustrative.</figcaption>
+      </figure>
+  actions:
+    - text: Get started
+      link: getting-started/requirements/
+      icon: right-arrow
+      variant: primary
+    - text: GitHub
+      link: https://github.com/lamazzing/rn-shipyard
+      icon: external
+      variant: secondary
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+<p class="value-strip">No queue <span>·</span> No Expo account <span>·</span> Your Mac, your credentials <span>·</span> MIT</p>
+
+## From zero to store upload in four commands
+
+Run these from the root of your Expo project. The first one needs no install.
+
+```bash
+# what is missing on this Mac?
+npx rn-shipyard doctor
+
+# one-time signing and Fastlane setup
+rn-shipyard init
+
+# expo prebuild + Fastlane gym, output in ./output
+rn-shipyard build --platform ios
+
+# upload the .ipa to App Store Connect
+rn-shipyard submit --platform ios
+```
+
+Build output streams to your terminal as it happens. Android works the same way with `--platform android`, and `--platform all` does both, one after the other.
+
+## What you get
+
+<CardGrid>
+  <Card title="No queue" icon="rocket">
+    Builds start immediately on your own Mac. No shared queue, no subscription, no build credits. On EAS's free plan, builds can wait in a queue; see [Expo's pricing](https://expo.dev/pricing) for details.
+  </Card>
+  <Card title="No Expo account" icon="star">
+    No login, no EAS project, no lock-in. It works offline until the upload step.
+  </Card>
+  <Card title="Submits from your Mac" icon="up-caret">
+    The upload goes straight from your machine to App Store Connect and Google Play with Fastlane.
+  </Card>
+  <Card title="Credentials you own" icon="approve-check">
+    Fastlane Match and your own keystore, in formats you can move anywhere. Not a vendor credential store.
+  </Card>
+  <Card title="A Fastfile you can read" icon="document">
+    The generated `fastlane/Fastfile` is plain Ruby. Run it yourself if you ever want to leave.
+  </Card>
+  <Card title="Built for local use" icon="laptop">
+    `doctor` requirements check, build history, native-folder protection, secrets redacted from all output, and `--json` with stable exit codes on every command.
+  </Card>
+</CardGrid>
+
+It reads your existing `eas.json` and `app.json`. It never modifies them.
+
+## rn-shipyard vs EAS
+
+EAS can already build locally with `eas build --local`. The difference is what else it needs from you. Here is the honest picture.
+
+<div class="compare-table">
+
+| | EAS Build (cloud) | `eas build --local` | rn-shipyard |
+|---|---|---|---|
+| Queue | Shared queue on the free plan, priority on paid plans | None (but needs an account, and marked experimental) | ✓ None |
+| Where the build runs | Expo's cloud | Your machine | Your Mac |
+| No Expo account needed | ✗ | ✗ (login and a linked EAS project) | ✓ |
+| Works offline | ✗ | ✗ | ✓ until the upload step |
+| Where submit runs | Expo's servers | Expo's servers (`eas submit`) | Your Mac, straight to the stores |
+| Credential storage | Expo manages them | Expo manages them | Yours: Fastlane Match, your own keystore |
+| Cost | Free tier with limits, paid plans above it | Needs an Expo account; check Expo's pricing | ✓ Free |
+| Needs a Mac for iOS | No | Yes | Yes |
+| Windows / Linux | ✓ | – check Expo's docs | ✗ |
+| OTA updates | ✓ EAS Update | ✓ EAS Update | ✗ |
+| Maturity | Mature | Marked experimental in its help text | New |
+
+</div>
+
+EAS is the better choice when you have no Mac, want credentials managed for you, need OTA updates, or want a mature product with support. rn-shipyard is for people who want a local-first workflow with no account and no lock-in. You can use both: nothing in rn-shipyard changes your EAS setup. See [Migrating from EAS](/guides/migrating-from-eas/).
+
+## Hosted builds: coming later
+
+<div class="hosted-teaser">
+
+### Don't have a Mac, or want builds off your machine?
+
+Hosted builds without the queue are on the roadmap. The CLI is open source under the MIT license. Nothing hosted exists yet, and there is no sign-up form.
+
+[Tell us you're interested](https://github.com/lamazzing/rn-shipyard/discussions)
+
+</div>
+
+<div class="cta-band">
+
+### Run the check. It changes nothing.
+
+```bash
+npx rn-shipyard doctor
+```
+
+Tells you what is missing on this Mac for iOS and Android builds, with a fix command for each problem. [Read the requirements](/getting-started/requirements/) or [start your first build](/getting-started/first-build/).
+
+</div>

@@ -1,12 +1,12 @@
 <% if (bundleId) { %>
-app_identifier("<%= bundleId %>")
+app_identifier(<%- rb(bundleId) %>)
 <% } %>
 <% if (appleId) { %>
-apple_id("<%= appleId %>")
+apple_id(<%- rb(appleId) %>)
 <% } %>
 <% if (teamId) { %>
-team_id("<%= teamId %>")
+team_id(<%- rb(teamId) %>)
 <% } %>
 <% if (packageName) { %>
-package_name("<%= packageName %>")
+package_name(<%- rb(packageName) %>)
 <% } %>

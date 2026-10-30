@@ -37,7 +37,7 @@ Purpose: One-time project setup — configure signing, generate Fastlane files, 
 
 Reads:
 - `eas.json` — imports build profiles and submit config
-- `app.json` / `app.config.js` — reads app name, version, bundle IDs
+- `app.json` / `app.config.js|ts|mjs|cjs` — reads app name, version, bundle IDs (dynamic configs evaluated with `npx expo config --json`; `eas.json` build-profile `env` applied)
 
 Flags:
 - `--platform ios|android|all` (default: all) — set up specific platform

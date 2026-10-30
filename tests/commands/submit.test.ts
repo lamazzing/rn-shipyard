@@ -1,8 +1,14 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
-vi.mock("../../src/fastlane/runner.js", () => ({
-  runFastlane: vi.fn(),
-}));
+vi.mock("../../src/fastlane/runner.js", async () => {
+  const actual = await vi.importActual<typeof import("../../src/fastlane/runner.js")>(
+    "../../src/fastlane/runner.js"
+  );
+  return { ...actual, runFastlane: vi.fn() };
+});
 
 vi.mock("../../src/core/config.js", () => ({
   configExists: vi.fn(),
@@ -98,6 +104,13 @@ describe("submitIos", () => {
   });
 });
 
+let saPath: string;
+beforeAll(async () => {
+  const d = await mkdtemp(join(tmpdir(), "shipyard-submit-"));
+  saPath = join(d, "play-service-account.json");
+  await writeFile(saPath, "{}");
+});
+
 describe("submitAndroid", () => {
   it("returns success when fastlane supply succeeds", async () => {
     mockedRunFastlane.mockResolvedValueOnce({
@@ -109,7 +122,7 @@ describe("submitAndroid", () => {
 
     const result = await submitAndroid({
       aabPath: "/tmp/test/output/TestApp-1.2.0-42.aab",
-      serviceAccountKeyPath: "./play-service-account.json",
+      serviceAccountKeyPath: saPath,
       track: "internal",
       projectDir: "/tmp/test",
       json: false,
@@ -142,7 +155,7 @@ describe("submitAndroid", () => {
 
     const result = await submitAndroid({
       aabPath: "/tmp/test/output/TestApp-1.2.0-42.aab",
-      serviceAccountKeyPath: "./play-service-account.json",
+      serviceAccountKeyPath: saPath,
       track: "internal",
       projectDir: "/tmp/test",
       json: false,
@@ -150,5 +163,60 @@ describe("submitAndroid", () => {
 
     expect(result.status).toBe("error");
     expect(result.error).toContain("Invalid service account");
+  });
+
+  it("passes track and release status to the supply lane", async () => {
+    mockedRunFastlane.mockResolvedValueOnce({ success: true, exitCode: 0, output: "ok", durationSeconds: 1 });
+
+    await submitAndroid({
+      aabPath: "/tmp/test/a.aab",
+      serviceAccountKeyPath: saPath,
+      track: "internal",
+      releaseStatus: "draft",
+      projectDir: "/tmp/test",
+      json: false,
+    });
+
+    expect(mockedRunFastlane.mock.calls[0][2]).toMatchObject({
+      aab_path: "/tmp/test/a.aab",
+      track: "internal",
+      release_status: "draft",
+      service_account_key: saPath,
+    });
+  });
+
+  it("defaults the release status to draft", async () => {
+    mockedRunFastlane.mockResolvedValueOnce({ success: true, exitCode: 0, output: "ok", durationSeconds: 1 });
+    await submitAndroid({
+      aabPath: "/tmp/test/a.aab", serviceAccountKeyPath: saPath, track: "internal", projectDir: "/tmp/test", json: false,
+    });
+    expect(mockedRunFastlane.mock.calls[0][2]).toMatchObject({ release_status: "draft" });
+  });
+
+  it("dry run returns the exact command and never calls fastlane", async () => {
+    const result = await submitAndroid({
+      aabPath: "/tmp/test/a.aab",
+      serviceAccountKeyPath: saPath,
+      track: "internal",
+      releaseStatus: "draft",
+      dryRun: true,
+      projectDir: "/tmp/test",
+      json: false,
+    });
+
+    expect(mockedRunFastlane).not.toHaveBeenCalled();
+    expect(result.command).toEqual([
+      "fastlane", "android", "submit",
+      "aab_path:/tmp/test/a.aab", "track:internal", "release_status:draft", `service_account_key:${saPath}`,
+    ]);
+  });
+
+  it("errors when the service account file does not exist", async () => {
+    const result = await submitAndroid({
+      aabPath: "/tmp/test/a.aab", serviceAccountKeyPath: "/nonexistent/sa.json", track: "internal", projectDir: "/tmp/test", json: false,
+    });
+    expect(result.status).toBe("error");
+    expect(result.error).toContain("not found");
+    expect(mockedRunFastlane).not.toHaveBeenCalled();
   });
 });

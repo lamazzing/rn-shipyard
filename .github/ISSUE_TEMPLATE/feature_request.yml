@@ -1,0 +1,27 @@
+name: Feature request
+description: Suggest an improvement
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please read the non-goals in [CONTRIBUTING.md](https://github.com/lamazzing/rn-shipyard/blob/main/CONTRIBUTING.md#scope-and-non-goals) first. Requests for OTA updates, cloud builds, Windows/Linux, monorepos, custom Fastlane lanes, build caching, parallel builds, CI/CD integration, automatic version bumping or a GUI/TUI are out of scope and will be closed.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+    validations:
+      required: true
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This is not one of the documented non-goals
+          required: true

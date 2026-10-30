@@ -1,9 +1,9 @@
-git_url("<%= matchGitUrl %>")
+<% if (/^[a-z][a-z0-9+.-]*:\/\/[^\/?#]*:[^\/?#]*@/i.test(matchGitUrl)) { throw new Error("Refusing to write a Match git URL that contains credentials"); } %>git_url(<%- rb(matchGitUrl) %>)
 
 storage_mode("git")
 
-type("<%= matchType %>")
+type(<%- rb(matchType) %>)
 
-app_identifier("<%= bundleId %>")
+app_identifier(<%- rb(bundleId) %>)
 
-team_id("<%= teamId %>")
+team_id(<%- rb(teamId) %>)

@@ -4,7 +4,8 @@ vi.mock("../../src/utils/shell.js", () => ({
   exec: vi.fn(),
 }));
 
-vi.mock("../../src/core/eas-parser.js", () => ({
+vi.mock("../../src/core/eas-parser.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/core/eas-parser.js")>()),
   parseEasConfig: vi.fn(),
   parseAppConfig: vi.fn(),
 }));

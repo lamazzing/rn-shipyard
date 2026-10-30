@@ -1,6 +1,7 @@
 import { readFile, writeFile, mkdir, access } from "node:fs/promises";
 import { join } from "node:path";
 import { ShipyardError } from "../utils/errors.js";
+import { resolvePath, toPortablePath } from "./paths.js";
 
 export interface PlatformIosConfig {
   enabled: boolean;
@@ -15,6 +16,8 @@ export interface PlatformAndroidConfig {
   enabled: boolean;
   keystorePath: string;
   keystoreAlias: string;
+  /** JSON file outside the repo: { keystorePassword, keyAlias, keyPassword } */
+  credentialsPath?: string;
   serviceAccountKeyPath?: string;
 }
 
@@ -63,7 +66,7 @@ export async function readConfig(projectDir: string): Promise<ShipyardConfig> {
     if (!config.version || !config.platforms) {
       throw new Error("Invalid schema");
     }
-    return config;
+    return resolveConfigPaths(projectDir, config);
   } catch (err) {
     if (err instanceof ShipyardError) throw err;
     throw new ShipyardError(
@@ -74,11 +77,51 @@ export async function readConfig(projectDir: string): Promise<ShipyardConfig> {
   }
 }
 
+function mapAndroidPaths(
+  android: PlatformAndroidConfig,
+  fn: (p: string) => string
+): PlatformAndroidConfig {
+  return {
+    ...android,
+    keystorePath: fn(android.keystorePath),
+    credentialsPath: android.credentialsPath ? fn(android.credentialsPath) : undefined,
+    serviceAccountKeyPath: android.serviceAccountKeyPath
+      ? fn(android.serviceAccountKeyPath)
+      : undefined,
+  };
+}
+
+/** Stored paths ("~/x", project-relative or legacy absolute) -> absolute, at read time. */
+function resolveConfigPaths(projectDir: string, config: ShipyardConfig): ShipyardConfig {
+  const android = config.platforms.android;
+  if (!android) return config;
+  return {
+    ...config,
+    platforms: {
+      ...config.platforms,
+      android: mapAndroidPaths(android, (p) => resolvePath(projectDir, p)),
+    },
+  };
+}
+
+/** Absolute paths -> project-relative or "~/x" so the file has no machine-specific prefix. */
+function portableConfig(projectDir: string, config: ShipyardConfig): ShipyardConfig {
+  const android = config.platforms.android;
+  if (!android) return config;
+  return {
+    ...config,
+    platforms: {
+      ...config.platforms,
+      android: mapAndroidPaths(android, (p) => toPortablePath(projectDir, p)),
+    },
+  };
+}
+
 export async function writeConfig(
   projectDir: string,
   config: ShipyardConfig
 ): Promise<void> {
   const dir = join(projectDir, SHIPYARD_DIR);
   await mkdir(dir, { recursive: true });
-  await writeFile(configPath(projectDir), JSON.stringify(config, null, 2) + "\n");
+  await writeFile(configPath(projectDir), JSON.stringify(portableConfig(projectDir, config), null, 2) + "\n");
 }

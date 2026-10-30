@@ -1,0 +1,48 @@
+name: Bug report
+description: Something does not work as documented
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Remove secrets before posting
+        Logs, JSON output and config files can contain passwords, Apple IDs, team IDs, Git URLs, key aliases and absolute paths with your username. **Review everything you paste and redact it.** Never paste keystores, service-account files, `.env` contents or `.shipyard/` credentials.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Command and steps to reproduce
+      description: The exact command line (for example `rn-shipyard build --platform ios --profile production`).
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `rn-shipyard doctor --json`
+      render: json
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: macOS, Xcode and Node versions
+      placeholder: "macOS version / Xcode version / Node version"
+    validations:
+      required: true
+  - type: input
+    id: cli-version
+    attributes:
+      label: rn-shipyard version (`rn-shipyard --version`)
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant output (redacted)
+      render: shell

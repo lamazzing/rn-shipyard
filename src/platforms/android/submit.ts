@@ -1,17 +1,25 @@
-import { runFastlane } from "../../fastlane/runner.js";
+import { access } from "node:fs/promises";
+import { runFastlane, fastlaneArgs } from "../../fastlane/runner.js";
 
 export interface AndroidSubmitOptions {
   aabPath: string;
   serviceAccountKeyPath?: string;
   track: string;
+  releaseStatus?: string;
+  /** Validate inputs and return the fastlane command without running it */
+  dryRun?: boolean;
   projectDir: string;
   json: boolean;
+  /** Whether fastlane may use the terminal */
+  interactive: boolean;
 }
 
 export interface SubmitResult {
   status: "success" | "error" | "skipped";
   durationSeconds: number;
   error?: string;
+  /** Set on dry run: the exact command that would be executed */
+  command?: string[];
 }
 
 export async function submitAndroid(
@@ -26,14 +34,35 @@ export async function submitAndroid(
     };
   }
 
+  try {
+    await access(opts.serviceAccountKeyPath);
+  } catch {
+    return {
+      status: "error",
+      durationSeconds: 0,
+      error: `Google Play service account key not found at ${opts.serviceAccountKeyPath}`,
+    };
+  }
+
+  const options = {
+    aab_path: opts.aabPath,
+    track: opts.track,
+    release_status: opts.releaseStatus ?? "draft",
+    service_account_key: opts.serviceAccountKeyPath,
+  };
+
+  if (opts.dryRun) {
+    return {
+      status: "skipped",
+      durationSeconds: 0,
+      command: ["fastlane", ...fastlaneArgs("android", "submit", options)],
+    };
+  }
+
   const result = await runFastlane(
     "android",
     "submit",
-    {
-      aab_path: opts.aabPath,
-      track: opts.track,
-      service_account_key: opts.serviceAccountKeyPath,
-    },
+    options,
     {
       json: opts.json,
       projectDir: opts.projectDir,

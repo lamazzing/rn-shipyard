@@ -1,5 +1,5 @@
 import { readHistory, getLastSuccessfulBuild, type HistoryEntry } from "./history.js";
-import { parseAppConfig, type AppConfig } from "./eas-parser.js";
+import { parseAppConfig, configFieldHint, type AppConfig } from "./eas-parser.js";
 
 export interface VersionCheckResult {
   shouldWarn: boolean;
@@ -8,7 +8,10 @@ export interface VersionCheckResult {
 }
 
 export async function checkVersion(
-  projectDir: string
+  projectDir: string,
+  /** Already evaluated config (build passes it so a dynamic config is not evaluated twice). */
+  evaluated?: AppConfig,
+  profileEnv: Record<string, string> = {}
 ): Promise<VersionCheckResult> {
   const history = await readHistory(projectDir);
   const lastBuild = getLastSuccessfulBuild(history);
@@ -22,7 +25,7 @@ export async function checkVersion(
 
   let appConfig: AppConfig;
   try {
-    appConfig = await parseAppConfig(projectDir);
+    appConfig = evaluated ?? (await parseAppConfig(projectDir, profileEnv));
   } catch {
     return {
       shouldWarn: false,
@@ -32,7 +35,6 @@ export async function checkVersion(
 
   const currentVersion = appConfig.version;
   const currentIosBuild = appConfig.ios?.buildNumber;
-  const currentAndroidCode = appConfig.android?.versionCode;
 
   // Check iOS
   const lastIos = lastBuild.platforms.ios;
@@ -43,29 +45,22 @@ export async function checkVersion(
     ) {
       return {
         shouldWarn: true,
-        message: `iOS version ${currentVersion} (build ${currentIosBuild}) was already built successfully on ${lastBuild.timestamp}. Did you forget to bump the version or build number?`,
+        message: `iOS version ${currentVersion} (build ${currentIosBuild}) was already built successfully on ${lastBuild.timestamp}. Did you forget to bump the version or build number? ${bumpHint(appConfig)}`,
         lastBuild,
       };
     }
   }
 
-  // Check Android
-  const lastAndroid = lastBuild.platforms.android;
-  if (lastAndroid?.status === "success") {
-    if (
-      lastAndroid.version === currentVersion &&
-      lastAndroid.versionCode === currentAndroidCode
-    ) {
-      return {
-        shouldWarn: true,
-        message: `Android version ${currentVersion} (versionCode ${currentAndroidCode}) was already built successfully on ${lastBuild.timestamp}. Did you forget to bump the version or versionCode?`,
-        lastBuild,
-      };
-    }
-  }
+  // Android: no check. The versionCode is chosen by build (see version-code.ts)
+  // and can never repeat.
 
   return {
     shouldWarn: false,
     message: "Version check passed",
   };
+}
+
+function bumpHint(app: AppConfig): string {
+  if (app.source === "app.json") return "Bump expo.version or expo.ios.buildNumber in app.json.";
+  return `${app.source} is a dynamic config, so rn-shipyard can't edit it: bump the version or ios.buildNumber in ${app.source} yourself. ${configFieldHint(app.source, "ios.buildNumber", String(Number(app.ios?.buildNumber ?? 0) + 1))}`;
 }

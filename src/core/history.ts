@@ -1,5 +1,6 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { toPortablePath } from "./paths.js";
 import { v4 as uuidv4 } from "uuid";
 
 export interface PlatformResult {
@@ -10,6 +11,8 @@ export interface PlatformResult {
   artifactPath?: string;
   durationSeconds: number;
   error: string | null;
+  /** Machine-readable code of the failure when there is one (e.g. MATCH_REPO_AUTH_FAILED) */
+  errorCode?: string;
 }
 
 export interface HistoryEntry {
@@ -48,10 +51,19 @@ export async function appendHistory(
   entry: Omit<HistoryEntry, "id" | "timestamp">
 ): Promise<HistoryEntry> {
   const history = await readHistory(projectDir);
+  const platforms: HistoryEntry["platforms"] = {};
+  for (const key of ["ios", "android"] as const) {
+    const result = entry.platforms[key];
+    if (!result) continue;
+    platforms[key] = result.artifactPath
+      ? { ...result, artifactPath: toPortablePath(projectDir, result.artifactPath) }
+      : result;
+  }
   const fullEntry: HistoryEntry = {
     id: uuidv4().slice(0, 8),
     timestamp: new Date().toISOString(),
     ...entry,
+    platforms,
   };
   history.entries.push(fullEntry);
 

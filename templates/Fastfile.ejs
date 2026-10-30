@@ -1,26 +1,49 @@
-default_platform(:ios)
+default_platform(:<%= ios ? "ios" : "android" %>)
 
 <% if (ios) { %>
 platform :ios do
   desc "Build iOS app"
   lane :build do |options|
+    # match keeps the configured git_url (its keychain passphrase lookup is keyed by it). Before this
+    # lane rn-shipyard clones that repo itself (so git/ssh can prompt on your terminal) and
+    # redirects git to the local clone through GIT_CONFIG_* environment variables.
     match(
-      type: "<%= ios.matchType %>",
+      type: <%- rb(ios.matchType) %>,
       readonly: true,
-      app_identifier: "<%= ios.bundleId %>",
-      team_id: "<%= ios.teamId %>"
+      app_identifier: <%- rb(ios.bundleId) %>,
+      team_id: <%- rb(ios.teamId) %>
     )
+    # rn-shipyard detects the workspace and scheme that expo prebuild generated (Expo
+    # sanitises the iOS project name) and passes them in as workspace: / scheme:.
+    UI.user_error!("Pass workspace: and scheme: (rn-shipyard build does this)") unless options[:workspace] && options[:scheme]
     gym(
-      workspace: "ios/<%= appName %>.xcworkspace",
-      scheme: "<%= appName %>",
+      workspace: options[:workspace],
+      scheme: options[:scheme],
       export_method: "app-store",
       output_directory: options[:output_dir] || "./output",
-      output_name: options[:output_name] || "<%= appName %>.ipa"
+      output_name: options[:output_name] || <%- rb(appName + ".ipa") %>
     )
+  end
+
+  desc "Log in to App Store Connect (interactive step run by rn-shipyard submit before the upload)"
+  lane :shipyard_apple_login do
+    user = ENV["FASTLANE_USER"].to_s
+    UI.user_error!("FASTLANE_USER is not set") if user.empty?
+    # Same login pilot does (App Store Connect web session only). With no password in the
+    # environment or keychain, CredentialsManager asks for it and stores it in the keychain
+    # (deliver.<user>); spaceship asks for the 2FA code and caches the session cookie that the
+    # non-interactive submit lane then reuses.
+    Spaceship::ConnectAPI.login(user, use_portal: false, use_tunes: true, skip_select_team: true)
+    UI.success("Logged in to App Store Connect as " + user)
   end
 
   desc "Submit iOS app to App Store Connect"
   lane :submit do |options|
+    # An App Store Connect API key given through APP_STORE_CONNECT_API_KEY_* environment variables
+    if [ENV["APP_STORE_CONNECT_API_KEY_KEY_ID"], ENV["APP_STORE_CONNECT_API_KEY_ISSUER_ID"]].none? { |v| v.to_s.empty? } &&
+       [ENV["APP_STORE_CONNECT_API_KEY_KEY"], ENV["APP_STORE_CONNECT_API_KEY_KEY_FILEPATH"]].any? { |v| !v.to_s.empty? }
+      app_store_connect_api_key
+    end
     pilot(
       ipa: options[:ipa_path],
       skip_waiting_for_build_processing: true
@@ -33,15 +56,16 @@ end
 platform :android do
   desc "Build Android app"
   lane :build do |options|
+    # Signing passwords are NOT passed here: -P flags show up in `ps`. rn-shipyard exports
+    # ORG_GRADLE_PROJECT_android.injected.signing.{store,key}.password in the environment,
+    # which Gradle reads as project properties.
     gradle(
       project_dir: "android",
       task: "bundle",
       build_type: "Release",
       properties: {
-        "android.injected.signing.store.file" => options[:keystore_path] || "<%= android.keystorePath %>",
-        "android.injected.signing.store.password" => options[:keystore_password] || ENV["ANDROID_KEYSTORE_PASSWORD"],
-        "android.injected.signing.key.alias" => options[:key_alias] || "<%= android.keystoreAlias %>",
-        "android.injected.signing.key.password" => options[:key_password] || ENV["ANDROID_KEY_PASSWORD"]
+        "android.injected.signing.store.file" => <% if (keystoreFallback) { %>options[:keystore_path] || <%- rb(keystoreFallback) %><% } else { %>options[:keystore_path]<% } %>,
+        "android.injected.signing.key.alias" => options[:key_alias] || <%- rb(android.keystoreAlias) %>
       }
     )
   end
@@ -51,7 +75,13 @@ platform :android do
     supply(
       aab: options[:aab_path],
       track: options[:track] || "internal",
-      json_key: options[:service_account_key]<% if (android.serviceAccountKeyPath) { %> || "<%= android.serviceAccountKeyPath %>"<% } %>
+      release_status: options[:release_status] || "draft",
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+      skip_upload_changelogs: true,
+      skip_upload_apk: true,
+      json_key: options[:service_account_key]<% if (serviceAccountFallback) { %> || <%- rb(serviceAccountFallback) %><% } %>
 
     )
   end

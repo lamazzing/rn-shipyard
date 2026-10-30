@@ -1,0 +1,17 @@
+---
+import Default from "@astrojs/starlight/components/Footer.astro";
+---
+
+<Default {...Astro.props}><slot /></Default>
+<p class="disclaimer">
+  rn-shipyard is an independent open-source project, not affiliated with or endorsed by Expo. Expo and EAS are
+  trademarks of 650 Industries, Inc.
+</p>
+
+<style>
+  .disclaimer {
+    margin-top: 1rem;
+    font-size: var(--sl-text-xs);
+    color: var(--sl-color-gray-3);
+  }
+</style>

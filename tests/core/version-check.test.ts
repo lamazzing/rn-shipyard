@@ -60,7 +60,7 @@ describe("checkVersion", () => {
     expect(result.message).toContain("bump");
   });
 
-  it("warns when same Android version and versionCode", async () => {
+  it("does not warn for a repeated Android versionCode (build picks the next one itself)", async () => {
     await writeAppJson(testDir, "1.0.0", "2", 1);
     await appendHistory(testDir, {
       command: "build",
@@ -77,8 +77,7 @@ describe("checkVersion", () => {
     });
 
     const result = await checkVersion(testDir);
-    expect(result.shouldWarn).toBe(true);
-    expect(result.message).toContain("versionCode");
+    expect(result.shouldWarn).toBe(false);
   });
 
   it("no warning when version is different", async () => {

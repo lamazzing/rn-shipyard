@@ -1,7 +1,7 @@
 {
   "name": "rn-shipyard",
   "version": "0.1.0",
-  "description": "Build and submit Expo apps locally using Fastlane — a local replacement for EAS",
+  "description": "Build and submit Expo apps locally on your Mac using Fastlane, a local alternative to EAS Build and Submit",
   "main": "dist/index.js",
   "bin": {
     "rn-shipyard": "dist/index.js"
@@ -10,17 +10,18 @@
     "dist",
     "templates",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
     "test": "vitest run",
     "lint": "tsc --noEmit",
-    "prepublishOnly": "npm run build && npm run test"
+    "prepublishOnly": "npm run lint && npm test && npm run build"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "repository": {
     "type": "git",
@@ -36,7 +37,7 @@
     "ios",
     "android"
   ],
-  "author": "",
+  "author": "Luca Mazzi <luca.mazzi.dev@gmail.com>",
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/lamazzing/rn-shipyard/issues"
@@ -57,5 +58,8 @@
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"
-  }
+  },
+  "os": [
+    "darwin"
+  ]
 }

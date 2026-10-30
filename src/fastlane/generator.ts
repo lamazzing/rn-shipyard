@@ -1,10 +1,35 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import ejs from "ejs";
 import type { ShipyardConfig } from "../core/config.js";
 
 function templatesDir(): string {
   return join(__dirname, "..", "templates");
+}
+
+/**
+ * A Ruby double-quoted string literal for any value. Backslash, quote, control characters and
+ * every `#` (so `#{x}`, `#$x`, `#@x` can never interpolate) are escaped. Templates use it with
+ * `<%- rb(value) %>`; EJS's HTML escaping (`<%=`) would turn `'` into `&#39;`.
+ */
+export function rubyString(value: unknown): string {
+  const s = String(value ?? "");
+  let out = "";
+  for (const ch of s) {
+    switch (ch) {
+      case "\\": out += "\\\\"; break;
+      case '"': out += '\\"'; break;
+      case "#": out += "\\#"; break;
+      case "\n": out += "\\n"; break;
+      case "\r": out += "\\r"; break;
+      case "\t": out += "\\t"; break;
+      default: {
+        const code = ch.codePointAt(0)!;
+        out += code < 0x20 || code === 0x7f ? `\\x${code.toString(16).padStart(2, "0")}` : ch;
+      }
+    }
+  }
+  return `"${out}"`;
 }
 
 async function renderTemplate(
@@ -21,7 +46,7 @@ async function renderTemplate(
   for (const templatePath of paths) {
     try {
       const template = await readFile(templatePath, "utf-8");
-      return ejs.render(template, data);
+      return ejs.render(template, { ...data, rb: rubyString });
     } catch {
       continue;
     }
@@ -29,6 +54,21 @@ async function renderTemplate(
 
   throw new Error(`Template not found: ${templateName}`);
 }
+
+/**
+ * Keystore fallback written into the committed Fastfile: project-relative only.
+ * A keystore outside the project (or a ~/ path) is omitted; build passes keystore_path explicitly.
+ */
+export function fastfileKeystoreFallback(projectDir: string, p: string | undefined): string | undefined {
+  if (!p || p === "~" || p.startsWith("~/")) return undefined;
+  const root = resolve(projectDir);
+  const rel = isAbsolute(p) ? relative(root, resolve(p)) : relative(root, resolve(root, p));
+  if (rel === "" || rel === ".." || rel.startsWith(".." + sep) || isAbsolute(rel)) return undefined;
+  return rel.split(sep).join("/");
+}
+
+/** Same rule for the Play service account key: project-relative or omitted, never absolute. */
+export const fastfileServiceAccountFallback = fastfileKeystoreFallback;
 
 export async function generateFastfile(
   projectDir: string,
@@ -38,6 +78,8 @@ export async function generateFastfile(
   const content = await renderTemplate("Fastfile.ejs", {
     ios: config.platforms.ios,
     android: config.platforms.android,
+    keystoreFallback: fastfileKeystoreFallback(projectDir, config.platforms.android?.keystorePath),
+    serviceAccountFallback: fastfileServiceAccountFallback(projectDir, config.platforms.android?.serviceAccountKeyPath),
     appName,
   });
 
