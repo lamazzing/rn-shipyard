@@ -43,6 +43,7 @@ rn-shipyard init [-p, --platform <ios|android|all>]
                  [--android-keystore <path>]
                  [--android-credentials <path>]
                  [--android-last-version-code <n>]
+                 [--from-eas [path]]
 ```
 
 One-time setup for the project.
@@ -53,6 +54,7 @@ One-time setup for the project.
 | `--android-keystore <path>` | | Use an existing keystore instead of generating one |
 | `--android-credentials <path>` | | JSON file with `keystorePassword`, `keyAlias`, `keyPassword`. Keep it outside the repo |
 | `--android-last-version-code <n>` | | Seed the versionCode counter, for example with EAS's remote counter |
+| `--from-eas [path]` | | Import the signing credentials `eas credentials` downloaded (`credentials.json`, default `./credentials.json`; a folder with one also works). Cannot be combined with `--android-keystore` or `--android-credentials` |
 
 Interactive by default when stdin and stdout are a terminal. With `--non-interactive`, with `--json`, when `CI` is set (and not `0` or `false`), or when stdin or stdout is not a TTY, `init` never prompts: values come from environment variables and your Expo config, and a missing value exits `2`. Piped answers are not supported. Password prompts do not echo and never show a value taken from the environment (they show `[from env]`; Enter accepts it).
 
@@ -63,6 +65,8 @@ What it does:
 - iOS: asks for bundle identifier, Apple Team ID and the Match Git URL, with defaults from `app.json`, `eas.json`, `APPLE_TEAM_ID` and `MATCH_GIT_URL`. If `MATCH_PASSWORD` is set it runs `fastlane match appstore`: in a terminal on your own terminal (so Git, SSH, Apple ID and 2FA prompts work, and its output is not redacted), otherwise piped, detached from the terminal and redacted. Without `MATCH_PASSWORD` it skips and says so. The `EXPO_*` credential names are accepted, see [Environment variables](/reference/environment-variables/#eas-aliases).
 - Android: generates `.shipyard/android/release.keystore` with `keytool`, or adopts the keystore you pass.
 - Writes `.shipyard/config.json`, `.shipyard/.gitignore`, `fastlane/Fastfile`, `Appfile` (and `Matchfile` for iOS), and appends keystore and artifact patterns to your project `.gitignore`.
+
+`--from-eas`: reads the EAS `credentials.json` and imports it. Android: the keystore is verified with `keytool` (alias and key password too), copied to `~/.config/rn-shipyard/<slug>/` (folder `700`, files `600`), its SHA-256 fingerprint is printed, and `.shipyard/config.json` is configured like `--android-keystore` plus `--android-credentials`. iOS: the distribution certificate is converted with `openssl` in a private temp folder, then `fastlane match import` (internal lane `shipyard_match_import`) encrypts it with `MATCH_PASSWORD` and pushes it with every target's provisioning profile to the Match repo; it needs `MATCH_GIT_URL`, `APPLE_TEAM_ID`, `MATCH_PASSWORD` and an Apple login (a terminal, or an App Store Connect API key with `--non-interactive`). A platform missing from the file is skipped with a warning. `--json` adds `imported` (paths as `~/...`, fingerprints, never a password), `plaintextFiles` and `nextSteps`. The EAS files are never deleted: the delete command is printed once a build works. See [Migrating from EAS](/guides/migrating-from-eas/).
 
 Flag errors: an Android flag with `--platform ios`, `--android-credentials` without a keystore, or a bad `--android-last-version-code` give `INVALID_FLAGS`.
 

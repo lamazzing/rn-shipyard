@@ -43,6 +43,13 @@ Flags:
 - `--platform ios|android|all` (default: all) — set up specific platform
 - `--json` — output structured JSON
 - `--non-interactive` — fail with clear errors instead of prompting
+- `--from-eas [path]` — import the signing credentials `eas credentials` downloaded (see below)
+
+Import EAS credentials (`--from-eas`, default `./credentials.json`):
+- Android: verifies the EAS keystore with keytool, copies it to `~/.config/rn-shipyard/<slug>/` (0700/0600), prints the SHA-256 upload-key fingerprint, configures the keystore + credentials paths
+- iOS: converts the EAS distribution certificate (`.cer` + passwordless `.p12`) and imports it with every target's provisioning profile into the Match repo via `fastlane match import`
+- Never modifies or deletes the user's files; prints the command to delete the plaintext EAS files once a build works
+- This is a credentials import, not the config migration wizard of Out of Scope #10 (which concerns `eas.json`)
 
 iOS setup:
 - Prompts for Apple Team ID (or reads from eas.json / env)
@@ -152,7 +159,7 @@ Exit: 0 always.
 7. Parallel iOS+Android builds — nice to have, sequential in V1
 8. Push notifications setup — separate concern
 9. CI/CD integration — users run locally for V1 (the GitHub Actions cloud build above is the planned exception)
-10. Config migration wizard — just reads eas.json directly
+10. Config migration wizard — just reads eas.json directly (the signing-credentials import `init --from-eas` is a separate, in-scope feature)
 11. Multiple team/org support — indie dev = solo
 12. Build webhooks/callbacks — cloud feature
 13. Auto version bumping — warn only, don't modify user files

@@ -30,6 +30,7 @@ rn-shipyard/
 │   │   ├── history.ts              # .shipyard/history.json manager
 │   │   ├── paths.ts                # portable (relative / ~) path storage, .shipyard/.gitignore
 │   │   ├── eas-parser.ts           # eas.json (+ build-profile env) and app.json / app.config.* parser
+│   │   ├── eas-credentials.ts      # reader/validator for the credentials.json `eas credentials` downloads
 │   │   ├── version-check.ts        # Version bump detection
 │   │   └── output.ts               # Formatter (text tables / JSON)
 │   ├── platforms/
@@ -37,12 +38,14 @@ rn-shipyard/
 │   │   │   ├── build.ts            # iOS build via Fastlane gym
 │   │   │   ├── submit.ts           # iOS submit via Fastlane pilot
 │   │   │   ├── signing.ts          # Match setup and cert management
+│   │   │   ├── eas-import.ts       # init --from-eas: openssl p12 -> .cer + passwordless p12, fastlane match import
 │   │   │   ├── workspace.ts        # Detect the single ios/*.xcworkspace + scheme
 │   │   │   └── doctor.ts           # iOS-specific env checks
 │   │   └── android/
 │   │       ├── build.ts            # Android build via Fastlane gradle
 │   │       ├── submit.ts           # Android submit via Fastlane supply
 │   │       ├── keystore.ts         # Keystore generation
+│   │       ├── eas-import.ts       # init --from-eas: verify (keytool) and copy the EAS keystore
 │   │       ├── shell-env.ts        # /bin/sh dotted-env-var preflight (Gradle signing)
 │   │       └── doctor.ts           # Android-specific env checks
 │   ├── fastlane/
@@ -316,12 +319,47 @@ platform :android do
 end
 ```
 
+### EAS credentials import (`init --from-eas`)
+
+Input is the `credentials.json` that `eas credentials` > "credentials.json: Upload/Download credentials between EAS
+servers and your local json" > "Download credentials from EAS to credentials.json" writes (eas-cli
+`credentials/credentialsJson/types.js` is the schema; `src/core/eas-credentials.ts` mirrors it). Relative paths are
+relative to the file's directory:
+```json
+{ "android": { "keystore": { "keystorePath": "credentials/android/keystore.jks", "keystorePassword": "...",
+                              "keyAlias": "...", "keyPassword": "..." } },
+  "ios": { "provisioningProfilePath": "credentials/ios/profile.mobileprovision",
+           "distributionCertificate": { "path": "credentials/ios/dist-cert.p12", "password": "..." } } }
+```
+`ios` is either that one target or a map `{ "<targetName>": { ...same... } }` (app + extensions; files are prefixed
+`<target>-`). `keyPassword` may be absent (= the keystore password).
+
+Data flow:
+- Android: `keytool -list -v` + `keytool -certreq` (passwords via `-storepass:env` / `-keypass:env`) verify the
+  keystore, alias and key password and give the SHA-256. The keystore is copied to `~/.config/rn-shipyard/<slug>/release.keystore`
+  and `android-credentials.json` (`{ keystorePassword, keyAlias, keyPassword }`, the format `loadAndroidCredentials` reads)
+  is written next to it (dir 0700, files 0600). `init` then continues exactly as with `--android-keystore` +
+  `--android-credentials`, so `.shipyard/config.json` gets `~/` paths. A different existing keystore is never
+  overwritten without confirmation (interactive only, the old file becomes `.bak-<time>`).
+- iOS: in a 0700 `mkdtemp` workdir (cleanup registry: removed on success, failure, signals) `openssl pkcs12` reads the
+  EAS p12 (password via `-passin env:`), keeps the key in an encrypted PEM (random passphrase via env), writes the leaf as
+  DER `.cer` and re-exports a **passwordless** p12 (PBE-SHA1-3DES, SHA-1 MAC: macOS `security import` rejects AES-256),
+  because `Match::Importer#import_cert(params, cert_path:, p12_path:, profile_path:)` needs both files and match later
+  imports its p12 with an empty password. One openssl binary for all steps; `-legacy` is retried for OpenSSL 3+ (RC2-40 bags).
+  The internal lane `shipyard_match_import` (Fastfile.ejs) calls `import_cert` once per provisioning profile, with
+  the Matchfile config; it contacts the developer portal to match the certificate (stored as `certs/distribution/<cert id>.cer|p12`,
+  `profiles/appstore/AppStore_<bundle id>.mobileprovision`), encrypts with `MATCH_PASSWORD`, commits and pushes. It runs
+  in the foreground when interactive (git/ssh, Apple ID, 2FA prompts) and piped + detached + ssh BatchMode otherwise
+  (portal login then needs an App Store Connect API key in the environment). Secrets only in env and the exec `redact` list.
+- After success `init` lists the plaintext EAS files (`plaintextFiles`), adds them to `.gitignore`, warns if they were not
+  ignored or are tracked, and prints a `nextSteps` list including the delete command. It never deletes them.
+
 ### Command → File Read/Write Matrix
 
 | Command  | Reads                                         | Writes                                              |
 |----------|-----------------------------------------------|-----------------------------------------------------|
 | doctor   | system env (Xcode, SDK, etc.)                 | nothing (stdout only)                               |
-| init     | eas.json, app.json/app.config.*               | .shipyard/config.json, .shipyard/android/*.keystore, fastlane/* |
+| init     | eas.json, app.json/app.config.* (+ credentials.json with --from-eas) | .shipyard/config.json, .shipyard/android/*.keystore, fastlane/*, ~/.config/rn-shipyard/<slug>/* (--from-eas) |
 | build    | eas.json, .shipyard/config.json, .shipyard/history.json, app.json | output/*.ipa, output/*.aab, .shipyard/history.json |
 | submit   | .shipyard/config.json, .shipyard/history.json, output/* | .shipyard/history.json                             |
 | history  | .shipyard/history.json                        | nothing (stdout only)                               |

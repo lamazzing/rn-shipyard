@@ -152,6 +152,14 @@ rn-shipyard init --platform android \
 
 `--android-last-version-code` seeds the counter so rn-shipyard never reuses a code you already shipped.
 
+**Import your EAS signing credentials in one step** (no new iOS certificate, same Android upload key). Download them with `npx eas-cli credentials` (pick the platform, then "credentials.json: Upload/Download credentials between EAS servers and your local json", then "Download credentials from EAS to credentials.json"), then:
+
+```bash
+rn-shipyard init --from-eas          # reads ./credentials.json; or --from-eas path/to/credentials.json
+```
+
+Android: the keystore is verified with `keytool`, copied to `~/.config/rn-shipyard/<slug>/` (folder `700`, files `600`) and wired into `.shipyard/config.json`. Compare the printed SHA-256 with Play Console > App integrity > Upload key certificate. iOS: the distribution certificate and provisioning profile(s) are converted in a private temp folder and imported into your Match repo with `fastlane match import` (it commits and pushes, needs `MATCH_GIT_URL`, `APPLE_TEAM_ID`, `MATCH_PASSWORD` and an Apple login). When a build works, delete `credentials.json` and `credentials/` yourself: they hold your passwords in plain text. rn-shipyard never deletes them.
+
 More: [Migrating from EAS](https://lamazzing.github.io/rn-shipyard/guides/migrating-from-eas/) · [Dynamic config](https://lamazzing.github.io/rn-shipyard/guides/dynamic-config/)
 
 ## Commands
