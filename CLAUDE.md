@@ -26,6 +26,20 @@ rn-shipyard — A CLI tool that lets indie Expo developers build and submit iOS 
 - eas.json and app.json are READ ONLY — never modify user's config files
 - Use readline for interactive prompts (no external prompt libraries)
 
+## Definition of Done (every change)
+A change is finished only when all of these are done, in the same piece of work:
+- **GitHub README** (`README.md`) reflects it: commands, flags, env vars, error codes, behaviour
+- **Docs website** (`website/src/content/docs/`) reflects it, including `reference/commands.md`,
+  `reference/error-codes.md` and `reference/environment-variables.md`; `cd website && npm run build`
+  passes (it includes the link check)
+- **CHANGELOG.md** has an entry
+- **npm release**: bump `version` in package.json (semver: fix → patch, feature → minor), date the
+  CHANGELOG section, commit, then `git tag vX.Y.Z && git push origin main vX.Y.Z`.
+  `.github/workflows/release.yml` publishes automatically (npm trusted publishing). Luca has
+  authorized pushing release tags for this project. Check the release run and
+  `npm view rn-shipyard version` (the registry takes a few minutes to show a new version).
+- lint, tests and build green; CI green on `main`
+
 ## When Stuck
 - Try 3 approaches maximum, then document the blocker with a TODO comment and move on
 - If Fastlane integration fails, verify with `fastlane --version` and inspect the generated Fastfile in `fastlane/`

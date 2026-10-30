@@ -68,6 +68,12 @@ To sign, comment on your pull request with exactly: `I have read the CLA Documen
 3. `.github/workflows/release.yml` runs lint, tests and build, then publishes to npm with
    provenance through npm trusted publishing (no token). The tag must match the version.
 
+## Definition of done
+
+Every user-facing change updates, in the same PR: `README.md`, the docs site
+(`website/src/content/docs/`, including the commands, error-code and environment-variable
+reference pages) and `CHANGELOG.md`. Maintainers then release it to npm (see Releasing).
+
 ## Pull requests
 
 Use conventional commit messages (`feat:`, `fix:`, `docs:`, `chore:`), keep PRs focused, add tests, and make sure lint, test and build pass.
