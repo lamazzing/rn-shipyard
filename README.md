@@ -59,7 +59,7 @@ npx rn-shipyard submit --platform all                     # 4. upload to App Sto
 
 </details>
 
-<!-- demo: docs/launch/demo.tape renders .github/assets/demo.gif -->
+<p align="center"><img src=".github/assets/demo.gif" alt="rn-shipyard doctor, a signed Android build, and build history in a terminal" width="900"></p>
 
 ## Features
 
