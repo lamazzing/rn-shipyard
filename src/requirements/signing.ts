@@ -1,11 +1,10 @@
 import { readFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { resolvePath } from "../core/paths.js";
+import { resolvePath, toPortablePath } from "../core/paths.js";
 import { nonInteractiveGitEnv, NON_INTERACTIVE_GIT_ARGS } from "../utils/git-env.js";
 import { gitUrlSecrets } from "../utils/secrets.js";
 import { checkIosSubmitCredentials } from "../platforms/ios/submit.js";
 import { type CheckDef, type CheckContext, type Outcome, DOCS_BASE } from "./types.js";
-import { tryExec, isFile, tildify } from "./helpers.js";
+import { tryExec, isFile } from "./helpers.js";
 
 const MATCH_DOCS = `${DOCS_BASE}ios-fastlane-match`;
 const SUBMIT_DOCS = `${DOCS_BASE}ios-credentials-for-submit`;
@@ -169,10 +168,10 @@ export const signingChecks: CheckDef[] = [
     async run(ctx) {
       const android = (await androidConfig(ctx))!;
       const path = resolvePath(ctx.projectDir, android.keystorePath);
-      if (await isFile(path)) return { status: "pass", detail: tildify(path, homedir()) };
+      if (await isFile(path)) return { status: "pass", detail: toPortablePath(ctx.projectDir, path) };
       return {
         status: "fail",
-        detail: `not found at ${tildify(path, homedir())}`,
+        detail: `not found at ${toPortablePath(ctx.projectDir, path)}`,
         fix: "rn-shipyard init --platform android   (or fix keystorePath in .shipyard/config.json)",
         docs: ANDROID_DOCS,
       };
@@ -190,7 +189,7 @@ export const signingChecks: CheckDef[] = [
       if (f.state === "ok") return { status: "pass", detail: "readable JSON" };
       return {
         status: "fail",
-        detail: `cannot read ${tildify(f.path, homedir())} as JSON`,
+        detail: `cannot read ${toPortablePath(ctx.projectDir, f.path)} as JSON`,
         fix: 'Fix credentialsPath in .shipyard/config.json; the file must look like {"keystorePassword": "...", "keyAlias": "...", "keyPassword": "..."}',
         docs: ANDROID_DOCS,
       };
@@ -239,18 +238,18 @@ export const signingChecks: CheckDef[] = [
       try {
         const key = JSON.parse(await readFile(path, "utf-8")) as Record<string, unknown>;
         if (typeof key.client_email === "string" && typeof key.private_key === "string") {
-          return { status: "pass", detail: tildify(path, homedir()) };
+          return { status: "pass", detail: toPortablePath(ctx.projectDir, path) };
         }
         return {
           status: "fail",
-          detail: `${tildify(path, homedir())} is not a service-account key (client_email or private_key missing)`,
+          detail: `${toPortablePath(ctx.projectDir, path)} is not a service-account key (client_email or private_key missing)`,
           fix: "Download a new JSON key from Google Cloud > IAM > Service accounts > Keys",
           docs: ANDROID_DOCS,
         };
       } catch {
         return {
           status: "fail",
-          detail: `cannot read ${tildify(path, homedir())}`,
+          detail: `cannot read ${toPortablePath(ctx.projectDir, path)}`,
           fix: "Check the path in SUPPLY_JSON_KEY / serviceAccountKeyPath and that the file is a JSON key",
           docs: ANDROID_DOCS,
         };
