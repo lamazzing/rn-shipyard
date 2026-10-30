@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0] - 2026-10-30
 
 ### Added
 - `init --from-eas [path]` imports the signing credentials `eas credentials` downloaded (`credentials.json`), so EAS users switch without new certificates or a new Android upload key. Android: the keystore is verified with `keytool` (alias and key password), copied to `~/.config/rn-shipyard/<slug>/` (folder `700`, files `600`), the SHA-256 upload-key fingerprint is printed, and `.shipyard/config.json` is configured like `--android-keystore` plus `--android-credentials`. iOS: the distribution certificate is converted with `openssl` in a private temp folder into a `.cer` and the private key as an unencrypted traditional RSA PEM (what match itself stores as its "p12"; macOS rejects OpenSSL 3+ PKCS#12 files), then imported into the Match repo with `fastlane match import` (new internal lane `shipyard_match_import`; commits and pushes), for every target's provisioning profile. Passwords travel in the environment only. The plaintext EAS files are never deleted: `init` warns when they are not git-ignored or are tracked, and prints the delete command for once a build works. New error codes `EAS_CREDENTIALS_NOT_FOUND` (exit 2), `EAS_CREDENTIALS_INVALID`, `EAS_KEYSTORE_INVALID`, `EAS_KEYSTORE_EXISTS`, `EAS_IOS_EXTRACT_FAILED`, `EAS_IOS_IMPORT_FAILED`.
