@@ -3,6 +3,7 @@ import { resolvePath, toPortablePath } from "../core/paths.js";
 import { nonInteractiveGitEnv, NON_INTERACTIVE_GIT_ARGS } from "../utils/git-env.js";
 import { gitUrlSecrets } from "../utils/secrets.js";
 import { checkIosSubmitCredentials } from "../platforms/ios/submit.js";
+import { applyEasSubmitIos } from "../utils/apple-env.js";
 import { type CheckDef, type CheckContext, type Outcome, DOCS_BASE } from "./types.js";
 import { tryExec, isFile } from "./helpers.js";
 
@@ -146,10 +147,16 @@ export const signingChecks: CheckDef[] = [
     applies: async (ctx) => !!(await iosConfig(ctx)),
     async run(ctx) {
       const eas = await ctx.eas();
-      const problems = await checkIosSubmitCredentials(eas.appleId, ctx.env);
+      // the same eas.json fields submit reads (ascApiKeyPath, ...); a copy, ctx.env stays as is
+      const env = applyEasSubmitIos(eas.ios, ctx.projectDir, { ...ctx.env });
+      const problems = await checkIosSubmitCredentials(eas.appleId, env);
       if (problems.length === 0) {
-        const apiKey = !!ctx.env.APP_STORE_CONNECT_API_KEY_KEY_ID;
-        return { status: "pass", detail: apiKey ? "App Store Connect API key set" : "Apple ID and password found" };
+        const apiKey = !!env.APP_STORE_CONNECT_API_KEY_KEY_ID;
+        const fromEas = apiKey && !ctx.env.APP_STORE_CONNECT_API_KEY_KEY_ID;
+        return {
+          status: "pass",
+          detail: apiKey ? `App Store Connect API key set${fromEas ? " (from eas.json)" : ""}` : "Apple ID and password found",
+        };
       }
       return {
         status: "fail",

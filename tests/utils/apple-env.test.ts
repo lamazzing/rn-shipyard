@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { applyExpoEnvAliases, hasAscApiKey, EXPO_ENV_ALIASES } from "../../src/utils/apple-env.js";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { applyExpoEnvAliases, applyEasSubmitIos, hasAscApiKey, EXPO_ENV_ALIASES } from "../../src/utils/apple-env.js";
 import { collectSecrets, SECRET_ENV_VARS } from "../../src/utils/secrets.js";
 import { redactSecrets } from "../../src/utils/shell.js";
 
@@ -59,5 +61,43 @@ describe("EXPO_* secrets are redacted", () => {
     expect(redactSecrets("pw hunter2-secret and abcd-efgh-ijkl-mnop for me@example.com", secrets)).toBe(
       "pw *** and *** for me@example.com"
     );
+  });
+});
+
+describe("applyEasSubmitIos (eas.json submit.<profile>.ios, as eas submit reads it)", () => {
+  const ios = {
+    ascApiKeyPath: "./keys/AuthKey_ABC123.p8",
+    ascApiKeyId: "ABC123",
+    ascApiKeyIssuerId: "issuer-uuid",
+    appleTeamId: "TEAM123456",
+    ascAppId: 6740000000,
+  };
+
+  it("fills the fastlane API-key, team and app variables and resolves the key path", () => {
+    const env = applyEasSubmitIos(ios, "/work/app", {} as Record<string, string | undefined>);
+    expect(env.APP_STORE_CONNECT_API_KEY_KEY_FILEPATH).toBe("/work/app/keys/AuthKey_ABC123.p8");
+    expect(env.APP_STORE_CONNECT_API_KEY_KEY_ID).toBe("ABC123");
+    expect(env.APP_STORE_CONNECT_API_KEY_ISSUER_ID).toBe("issuer-uuid");
+    expect(env.FASTLANE_TEAM_ID).toBe("TEAM123456");
+    expect(env.PILOT_APPLE_ID).toBe("6740000000");
+    expect(hasAscApiKey(env)).toBe(true);
+  });
+
+  it("expands ~/ in ascApiKeyPath", () => {
+    const env = applyEasSubmitIos({ ascApiKeyPath: "~/keys/k.p8" }, "/work/app", {} as Record<string, string | undefined>);
+    expect(env.APP_STORE_CONNECT_API_KEY_KEY_FILEPATH).toBe(join(homedir(), "keys/k.p8"));
+  });
+
+  it("never overrides a variable that is already set", () => {
+    const env = applyEasSubmitIos(ios, "/work/app", {
+      APP_STORE_CONNECT_API_KEY_KEY_ID: "FROMENV",
+    } as Record<string, string | undefined>);
+    expect(env.APP_STORE_CONNECT_API_KEY_KEY_ID).toBe("FROMENV");
+    expect(env.APP_STORE_CONNECT_API_KEY_ISSUER_ID).toBe("issuer-uuid");
+  });
+
+  it("ignores a missing ios section and non-string values", () => {
+    expect(applyEasSubmitIos(undefined, "/w", {} as Record<string, string | undefined>)).toEqual({});
+    expect(applyEasSubmitIos({ ascApiKeyId: { x: 1 } }, "/w", {} as Record<string, string | undefined>)).toEqual({});
   });
 });

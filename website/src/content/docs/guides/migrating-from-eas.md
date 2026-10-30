@@ -26,6 +26,8 @@ rn-shipyard reads the config you already have. Your `eas.json` and `app.json` (o
 | `build.<profile>.env` (including `extends`) | Applied to config evaluation, prebuild and Fastlane, see [Dynamic config](/guides/dynamic-config/) |
 | `submit.<profile>.ios.appleId` | Apple ID for the Apple ID submit flow |
 | `submit.<profile>.ios.appleTeamId` | Default for the Apple Team ID |
+| `submit.<profile>.ios.ascApiKeyPath`, `ascApiKeyId`, `ascApiKeyIssuerId` | App Store Connect API key for `submit` |
+| `submit.<profile>.ios.ascAppId` | App Store Connect app ID passed to the upload |
 | `submit.<profile>.android.serviceAccountKeyPath` | Google Play service account key |
 | `submit.<profile>.android.track` | Play track, default `internal` |
 | `submit.<profile>.android.releaseStatus` | Release status, default `draft` |

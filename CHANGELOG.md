@@ -4,7 +4,19 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.0] - Unreleased
+## [0.1.1] - Unreleased
+
+### Fixed
+- `submit` and `doctor` read the App Store Connect API key from `eas.json`
+  (`submit.<profile>.ios.ascApiKeyPath`, `ascApiKeyId`, `ascApiKeyIssuerId`), plus `appleTeamId` and
+  `ascAppId`, as `eas submit` does. Environment variables still win. Previously an EAS project with its
+  key in `eas.json` failed with `MISSING_CONFIG_IOS_CREDENTIALS`.
+
+### Changed
+- Requires Node.js >= 22.12 (Node.js 20 is end of life); commander 15, vitest 5.
+- `doctor` prints the real `JAVA_HOME` path for a Homebrew JDK and shows credential paths project-relative.
+
+## [0.1.0] - 2026-10-30
 
 ### Hardening
 - Output redaction: a secret printed with a pause in the middle is masked in full (the held prefix is masked, and the continuation is matched against it), at any split point.

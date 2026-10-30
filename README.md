@@ -273,7 +273,7 @@ More: [iOS signing](https://lamazzing.github.io/rn-shipyard/guides/ios-signing/)
 
 Either of these is enough (the API key is checked first). The `EXPO_*` names are the ones EAS CLI uses; rn-shipyard accepts them as aliases. If both are set, the Fastlane name wins.
 
-- **App Store Connect API key:** `EXPO_ASC_KEY_ID`, `EXPO_ASC_ISSUER_ID` and `EXPO_ASC_API_KEY_PATH` (the `.p8`), or the Fastlane names `APP_STORE_CONNECT_API_KEY_KEY_ID`, `APP_STORE_CONNECT_API_KEY_ISSUER_ID` and `APP_STORE_CONNECT_API_KEY_KEY` / `_KEY_FILEPATH`. Best for CI: no login step.
+- **App Store Connect API key:** the key you configured for EAS in `eas.json` (`submit.<profile>.ios.ascApiKeyPath`, `ascApiKeyId`, `ascApiKeyIssuerId`) works as is. Or set `EXPO_ASC_KEY_ID`, `EXPO_ASC_ISSUER_ID` and `EXPO_ASC_API_KEY_PATH` (the `.p8`), or the Fastlane names `APP_STORE_CONNECT_API_KEY_KEY_ID`, `APP_STORE_CONNECT_API_KEY_ISSUER_ID` and `APP_STORE_CONNECT_API_KEY_KEY` / `_KEY_FILEPATH`. Best for CI: no login step.
 - **Apple ID:** from `submit.<profile>.ios.appleId`, `EXPO_APPLE_ID` or `FASTLANE_USER`, plus one of:
   - nothing, in a terminal: `submit` asks to log in and Fastlane stores the password in the macOS keychain (`deliver.<apple id>`). `FASTLANE_DONT_STORE_PASSWORD` opts out;
   - an app-specific password (`EXPO_APPLE_APP_SPECIFIC_PASSWORD` / `FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD`, created at appleid.apple.com) or `EXPO_APPLE_PASSWORD` / `FASTLANE_PASSWORD`;

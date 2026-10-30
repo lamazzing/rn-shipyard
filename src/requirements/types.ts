@@ -48,6 +48,8 @@ export type ConfigLoad =
 export interface EasHints {
   appleId?: string;
   serviceAccountKeyPath?: string;
+  /** submit.<profile>.ios as written (ascApiKeyPath etc.), for applyEasSubmitIos */
+  ios?: Record<string, unknown>;
 }
 
 export interface CheckContext {

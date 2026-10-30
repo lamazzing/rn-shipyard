@@ -51,7 +51,7 @@ async function loadConfig(projectDir: string): Promise<ConfigLoad> {
 async function loadEasHints(projectDir: string): Promise<EasHints> {
   try {
     const eas = JSON.parse(await readFile(`${projectDir}/eas.json`, "utf-8")) as {
-      submit?: Record<string, { ios?: { appleId?: unknown }; android?: { serviceAccountKeyPath?: unknown } }>;
+      submit?: Record<string, { ios?: Record<string, unknown>; android?: { serviceAccountKeyPath?: unknown } }>;
     };
     const profiles = eas.submit ?? {};
     const first = profiles.production ?? Object.values(profiles)[0];
@@ -60,6 +60,7 @@ async function loadEasHints(projectDir: string): Promise<EasHints> {
     return {
       appleId: typeof appleId === "string" ? appleId : undefined,
       serviceAccountKeyPath: typeof key === "string" ? key : undefined,
+      ios: first?.ios,
     };
   } catch {
     return {};

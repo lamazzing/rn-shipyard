@@ -22,6 +22,8 @@ export APP_STORE_CONNECT_API_KEY_KEY_FILEPATH=~/secrets/AuthKey_ABC123DEFG.p8
 rn-shipyard submit --platform ios
 ```
 
+Already set up for `eas submit`? Nothing to do: rn-shipyard reads `submit.<profile>.ios.ascApiKeyPath`, `ascApiKeyId` and `ascApiKeyIssuerId` from `eas.json` (and `appleTeamId`, `ascAppId`). Environment variables, when set, win over `eas.json`.
+
 You can pass the key contents instead of a path with `APP_STORE_CONNECT_API_KEY_KEY`. The EAS names `EXPO_ASC_KEY_ID`, `EXPO_ASC_ISSUER_ID` and `EXPO_ASC_API_KEY_PATH` are accepted as aliases. If both a Fastlane name and an EAS name are set, the Fastlane name wins.
 
 The API key is checked first.

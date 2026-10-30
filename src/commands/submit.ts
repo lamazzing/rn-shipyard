@@ -4,7 +4,7 @@ import { readHistory, appendHistory, getLastSuccessfulBuild, type PlatformResult
 import { parseEasConfig } from "../core/eas-parser.js";
 import { submitIos, checkIosSubmitCredentials, usesAppleIdAuth, appleIdForLogin, ASC_ENV_FIX } from "../platforms/ios/submit.js";
 import { appleLogin } from "../platforms/ios/apple-login.js";
-import { applyExpoEnvAliases } from "../utils/apple-env.js";
+import { applyExpoEnvAliases, applyEasSubmitIos } from "../utils/apple-env.js";
 import { runPreflight } from "./preflight.js";
 import { createPrompter } from "../utils/prompt.js";
 import { resolvePath } from "../core/paths.js";
@@ -176,6 +176,8 @@ export async function runSubmit(opts: SubmitOptions): Promise<SubmitOutcome> {
   } catch {
     // eas.json may not have submit config, that's OK
   }
+  // ascApiKeyPath / ascApiKeyId / ascApiKeyIssuerId / appleTeamId / ascAppId, as eas submit reads them
+  applyEasSubmitIos(easSubmitConfig.ios, projectDir);
 
   const results: {
     ios?: PlatformResult;

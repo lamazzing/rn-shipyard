@@ -28,6 +28,8 @@ const CRED_ENV = [
   "APP_STORE_CONNECT_API_KEY_ISSUER_ID",
   "APP_STORE_CONNECT_API_KEY_KEY",
   "APP_STORE_CONNECT_API_KEY_KEY_FILEPATH",
+  "FASTLANE_TEAM_ID",
+  "PILOT_APPLE_ID",
 ];
 
 let dir: string;
@@ -63,7 +65,14 @@ async function run(opts: {
 
 const json = () => JSON.parse(out.join("\n"));
 
-async function setup(opts: { ipa?: boolean; aab?: boolean; appleId?: string; serviceAccount?: boolean; ios?: boolean }) {
+async function setup(opts: {
+  ipa?: boolean;
+  aab?: boolean;
+  appleId?: string;
+  serviceAccount?: boolean;
+  ios?: boolean;
+  easAscKey?: boolean;
+}) {
   await mkdir(join(dir, ".shipyard"), { recursive: true });
   await mkdir(join(dir, "output"), { recursive: true });
   await writeFile(
@@ -82,6 +91,8 @@ async function setup(opts: { ipa?: boolean; aab?: boolean; appleId?: string; ser
   );
   const submit: Record<string, unknown> = {};
   if (opts.appleId) submit.ios = { appleId: opts.appleId };
+  if (opts.easAscKey)
+    submit.ios = { ascApiKeyPath: "./keys/AuthKey.p8", ascApiKeyId: "KEYID", ascApiKeyIssuerId: "ISSUER", ascAppId: "6740000000" };
   if (opts.serviceAccount) submit.android = { serviceAccountKeyPath: "sa.json" };
   await writeFile(join(dir, "eas.json"), JSON.stringify({ build: { production: {} }, submit: { production: submit } }));
   if (opts.serviceAccount) await writeFile(join(dir, "sa.json"), "{}");
@@ -184,6 +195,14 @@ describe("submit --dry-run", () => {
     process.env.APP_STORE_CONNECT_API_KEY_KEY_FILEPATH = "/k.p8";
     expect(await run({ platform: "ios" })).toBe(0);
     expect(json().platforms.ios.status).toBe("ok");
+  });
+
+  it("an API key configured in eas.json (ascApiKeyPath/Id/IssuerId, like eas submit) satisfies it too", async () => {
+    await setup({ ipa: true, easAscKey: true });
+    expect(await run({ platform: "ios" })).toBe(0);
+    expect(json().platforms.ios.status).toBe("ok");
+    expect(process.env.APP_STORE_CONNECT_API_KEY_KEY_FILEPATH).toBe(join(dir, "keys", "AuthKey.p8"));
+    expect(process.env.PILOT_APPLE_ID).toBe("6740000000");
   });
 
   it("--platform all lists both platforms, even when one has problems", async () => {
