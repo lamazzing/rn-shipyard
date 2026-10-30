@@ -53,6 +53,13 @@ async function locateSdk(ctx: CheckContext): Promise<SdkLocation> {
   return { invalid };
 }
 
+/** `java.home` of the `java` on PATH, or undefined when there is none. */
+async function detectJavaHome(): Promise<string | undefined> {
+  const r = await tryExec("java", ["-XshowSettings:properties", "-version"]);
+  if (!r || r.exitCode !== 0) return undefined;
+  return (r.stderr + r.stdout).match(/^\s*java\.home = (.+)$/m)?.[1]?.trim() || undefined;
+}
+
 export const androidChecks: CheckDef[] = [
   {
     id: "jdk",
@@ -84,7 +91,10 @@ export const androidChecks: CheckDef[] = [
     blocks: ANDROID,
     async run(ctx) {
       const home = ctx.env.JAVA_HOME;
-      const fix = 'export JAVA_HOME="$(/usr/libexec/java_home)"   (add the line to ~/.zshrc)';
+      // Point at the JDK `java` actually runs from: /usr/libexec/java_home misses a Homebrew
+      // openjdk that isn't registered in /Library/Java/JavaVirtualMachines.
+      const detected = await detectJavaHome();
+      const fix = `export JAVA_HOME="${detected ?? "$(/usr/libexec/java_home)"}"   (add the line to ~/.zshrc)`;
       if (!home) {
         return {
           status: "warn",

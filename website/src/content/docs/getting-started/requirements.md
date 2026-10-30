@@ -25,7 +25,7 @@ All-pass groups collapse to one line. Only groups with something to say are expa
   Android
     ✓ JDK 17+  25.0.1
     ! JAVA_HOME  not set; Gradle will use `java` from PATH
-        Fix:  export JAVA_HOME="$(/usr/libexec/java_home)"   (add the line to ~/.zshrc)
+        Fix:  export JAVA_HOME="/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home"   (add the line to ~/.zshrc)
         Docs: https://github.com/lamazzing/rn-shipyard#prerequisites
     ✓ Android SDK found  ~/Library/Android/sdk (ANDROID_HOME)
     ✓ SDK build-tools and platform-tools  build-tools 37.0.0

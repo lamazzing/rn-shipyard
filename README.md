@@ -42,7 +42,7 @@ npx rn-shipyard submit --platform all                     # 4. upload to App Sto
   Android
     ✓ JDK 17+  25.0.1
     ! JAVA_HOME  not set; Gradle will use `java` from PATH
-        Fix:  export JAVA_HOME="$(/usr/libexec/java_home)"   (add the line to ~/.zshrc)
+        Fix:  export JAVA_HOME="/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home"   (add the line to ~/.zshrc)
     ✓ ANDROID_HOME points to the Android SDK  ~/Library/Android/sdk
     ✓ SDK platform-tools and build-tools  build-tools 37.0.0
     ✓ keytool  available

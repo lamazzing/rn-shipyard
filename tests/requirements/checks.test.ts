@@ -142,6 +142,19 @@ describe("Android checks", () => {
     expect(bad?.status).toBe("fail");
   });
 
+  it("JAVA_HOME fix uses the java.home of the java on PATH (java_home misses Homebrew openjdk)", async () => {
+    const jdk = "/opt/homebrew/Cellar/openjdk/25.0.1/libexec/openjdk.jdk/Contents/Home";
+    mockMachine(
+      respond("java", {
+        exitCode: 0,
+        stdout: "",
+        stderr: `Property settings:\n    java.home = ${jdk}\n    java.version = 25.0.1\nopenjdk version "25.0.1"`,
+      })
+    );
+    const unset = await run("java-home", { env: { ...fx.env, JAVA_HOME: undefined } });
+    expect(unset?.fix).toContain(`export JAVA_HOME="${jdk}"`);
+  });
+
   it("Android SDK: ANDROID_HOME wins; unset with no SDK anywhere fails", async () => {
     expect((await run("android-home"))?.status).toBe("pass");
     const none = await run("android-home", { env: { ...fx.env, ANDROID_HOME: undefined } });
