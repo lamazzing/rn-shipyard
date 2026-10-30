@@ -1,10 +1,9 @@
 name: Release
 
-# Stages an npm release when a version tag (v1.2.3) is pushed; it goes live after a maintainer
-# approves it with 2FA. Uses npm trusted publishing (OIDC): no NPM_TOKEN secret. Configured on
-# npmjs.com → rn-shipyard → Settings → Trusted publishing → GitHub Actions, repository
-# lamazzing/rn-shipyard, workflow release.yml, "Allow npm publish" off. The tag must match
-# package.json's version.
+# Publishes to npm when a version tag (v1.2.3) is pushed, after lint, tests and build pass.
+# Uses npm trusted publishing (OIDC): no NPM_TOKEN secret. Configured on npmjs.com →
+# rn-shipyard → Settings → Trusted publishing → GitHub Actions, repository lamazzing/rn-shipyard,
+# workflow release.yml, "Allow npm publish" on. The tag must match package.json's version.
 
 on:
   push:
@@ -29,7 +28,6 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
-      # Staged, not live: a maintainer approves it with 2FA on npmjs.com (or `npm stage approve
-      # <id>`). The trusted publisher only allows `npm stage publish`. Needs npm >= 12.
+      # Trusted publishing (OIDC) needs a recent npm; the trusted publisher allows `npm publish`.
       - run: npm install -g npm@12
-      - run: npm stage publish . --provenance --access public
+      - run: npm publish --provenance --access public
