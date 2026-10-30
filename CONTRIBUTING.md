@@ -65,8 +65,10 @@ To sign, comment on your pull request with exactly: `I have read the CLA Documen
 
 1. Bump `version` in `package.json` and add the release to `CHANGELOG.md`.
 2. Commit, then tag and push: `git tag v0.1.1 && git push origin main v0.1.1`.
-3. `.github/workflows/release.yml` runs lint, tests and build, then publishes to npm with
-   provenance through npm trusted publishing (no token). The tag must match the version.
+3. `.github/workflows/release.yml` runs lint, tests and build, then stages the release on npm
+   with provenance through npm trusted publishing (no token). The tag must match the version.
+4. Approve the staged release with 2FA on npmjs.com (or `npm stage list` / `npm stage approve <id>`
+   with npm >= 12). Nothing goes live without that approval.
 
 ## Pull requests
 
