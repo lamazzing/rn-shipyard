@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.1] - 2026-10-31
 
 ### Changed
 - `init` exits `1` when the setup of a platform it was asked to set up ended `failed` (a Match error, `MATCH_AUTH_MISSING`), in a terminal and with `--non-interactive`. It used to exit `0` with `success: true`, so scripts and CI treated a failed signing setup as success. The files `init` already wrote stay, and the text summary still lists every platform and ends by telling you to fix the problem and run `init` again. With `--json` the document has `success: false` and `error: { code, message, fix }` (the platform's `errorCode`, e.g. `MATCH_AUTH_MISSING`, else the new `MATCH_SETUP_FAILED`; `message` is the reason, `fix` the next step) next to the unchanged `setup`, `config`, `nextSteps` and `files`. `skipped` (no Match password) and `configured`/`imported` still exit `0`.
