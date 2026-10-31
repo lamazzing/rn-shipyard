@@ -25,6 +25,14 @@ First, run `rn-shipyard doctor`. Most problems show up there with a fix command.
 
 **`VERSION_CODE_REUSED`.** Pass a `--version-code` greater than the reported last-used value, or omit the flag.
 
+**`BUILD_NUMBER_REUSED`.** Pass a `--build-number` greater than the reported last-used value, or omit the flag.
+
+**`FASTFILE_OUTDATED`.** `fastlane/Fastfile` came from an older rn-shipyard whose iOS lane does not set up signing or the build number. Run `rn-shipyard init` again.
+
+**`Signing for <App> requires a development team`.** Fixed by current versions: the build lane applies your Team ID and the Match profile to the app target. If you still see it, regenerate the Fastfile with `rn-shipyard init`. App extension targets are not signed by rn-shipyard.
+
+**The build number was already used on App Store Connect.** Give `build` an App Store Connect API key (`EXPO_ASC_KEY_ID`, `EXPO_ASC_ISSUER_ID`, `EXPO_ASC_API_KEY_PATH`) so it continues after the latest TestFlight build, or pass `--build-number <n>`.
+
 **`XCWORKSPACE_NOT_FOUND`.** Prebuild did not produce a workspace. Check that CocoaPods installed.
 
 **`KEYSTORE_NOT_FOUND` or `CREDENTIALS_NOT_READABLE`.** Check `keystorePath` and `credentialsPath` in `.shipyard/config.json`.

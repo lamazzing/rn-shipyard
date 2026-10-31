@@ -9,7 +9,7 @@ your Expo project
 ├── .shipyard/
 │   ├── config.json        written by init
 │   ├── history.json       build and submit log
-│   ├── version-code.json  Android versionCode counter
+│   ├── version-code.json  Android versionCode and iOS build number counters
 │   ├── .gitignore         written by init
 │   └── android/           generated release keystore
 ├── fastlane/              generated Fastfile, Appfile, Matchfile

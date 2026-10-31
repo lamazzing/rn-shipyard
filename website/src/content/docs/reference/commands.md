@@ -74,7 +74,7 @@ Flag errors: an Android flag with `--platform ios`, `--android-credentials` with
 
 ```bash
 rn-shipyard build [-p, --platform <ios|android|all>] [--profile <name>] [--submit]
-                  [--skip-version-check] [--version-code <n>] [--skip-checks]
+                  [--skip-version-check] [--version-code <n>] [--build-number <n>] [--skip-checks]
 ```
 
 | Flag | Default | Description |
@@ -84,6 +84,7 @@ rn-shipyard build [-p, --platform <ios|android|all>] [--profile <name>] [--submi
 | `--submit` | off | Submit after a successful build, with the same `--profile`. Only if no platform failed |
 | `--skip-version-check` | off | Skip the warning about an unchanged iOS version |
 | `--version-code <n>` | | Android versionCode. Must be greater than the last used one. Rejected when `android/` is tracked in git |
+| `--build-number <n>` | | iOS build number (`CFBundleVersion`). Must be greater than the last used one, and than the latest TestFlight build when an API key is available |
 | `--skip-checks` | off | Skip the requirements pre-flight (the `doctor` checks that run first). It makes no network calls |
 
 Per platform: decide whether `expo prebuild --clean` may run, run it, build with Fastlane, write the artifact to `output/`, record history. iOS and Android run one after the other, independently. The iOS workspace is the single `ios/*.xcworkspace` found after prebuild, and its name is the scheme.
@@ -97,6 +98,8 @@ Per platform: decide whether `expo prebuild --clean` may run, run it, build with
 | present, project not under git | refused with `NATIVE_DIR_NOT_IN_GIT` |
 
 After prebuild, `package.json` and the lockfiles are restored if prebuild rewrote them.
+
+The iOS lane then runs Match (read-only), reads the latest TestFlight build number if an App Store Connect API key is set, applies manual signing and the build number to the generated project, and archives with gym. See [iOS signing](/guides/ios-signing/#builds) and [Version numbers](/guides/version-numbers/#ios-the-build-number-counter). A failed build reports the real error line (xcodebuild or Gradle `error:`, else fastlane's `[!]` line, else the last 15 lines); the Gemfile tip and update notices are ignored. The same text goes to `--json` (`platforms.<platform>.error`) and to history.
 
 With `--json` the result is `{ success, platforms, prebuild, warnings }`. `prebuild.<platform>.action` is `generated`, `skipped_tracked` or `refused`.
 

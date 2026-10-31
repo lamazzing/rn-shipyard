@@ -76,6 +76,7 @@ export function createProgram(argv: string[] = process.argv): Command {
     .option("--submit", "Submit after successful build", false)
     .option("--skip-version-check", "Skip version bump warning", false)
     .option("--version-code <n>", "Android versionCode (must be greater than the last used one)")
+    .option("--build-number <n>", "iOS build number (CFBundleVersion); must be greater than the last used one")
     .option("--skip-checks", "Skip the requirements pre-flight (see `doctor`)", false)
     .addHelpText("after", "\nExamples:\n  $ rn-shipyard build --platform ios --profile production\n  $ rn-shipyard build --platform all --submit\n  $ rn-shipyard build --json --non-interactive")
     .action(async (_opts, cmd) => {

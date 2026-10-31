@@ -45,6 +45,8 @@ These EAS names are accepted by `doctor`, `init`, `build` and `submit`. rn-shipy
 | `EXPO_ASC_KEY_ID` | `APP_STORE_CONNECT_API_KEY_KEY_ID` |
 | `EXPO_ASC_ISSUER_ID` | `APP_STORE_CONNECT_API_KEY_ISSUER_ID` |
 
+The three `*_ASC_*` / `APP_STORE_CONNECT_API_KEY_*` names also let `build` read the latest TestFlight build number for the iOS [build number counter](/guides/version-numbers/#ios-the-build-number-counter). `build` also reads them from `eas.json` `submit.<profile>.ios` (`ascApiKeyPath`, `ascApiKeyId`, `ascApiKeyIssuerId`).
+
 ## CI and interactive mode
 
 rn-shipyard prompts only when stdin and stdout are both a terminal and none of `--json`, `--non-interactive` or `CI` is set. If `CI` is set to anything except `0` or `false`, it behaves as if `--non-interactive` was passed, so a CI runner with a pseudo-terminal never waits on a prompt.

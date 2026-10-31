@@ -193,6 +193,20 @@ a successful build. `build` writes the code into the GENERATED `android/app/buil
 modified) and into the artifact name. Seed the counter from EAS with `init --android-last-version-code <n>`
 (`npx eas-cli build:version:get -p android -e production` shows EAS's remote counter).
 
+### .shipyard/version-code.json (iOS build number counter, same file)
+```json
+{ "android": { "lastUsed": 4 }, "ios": { "lastUsed": 6 } }
+```
+```
+lastUsed = max(version-code.json ios.lastUsed, highest numeric buildNumber of a successful ios build in history.json)
+local    = max(app.json ios.buildNumber (integer) ?? 1, lastUsed + 1)
+number   = max(local, latest TestFlight build + 1)      # the build lane, only with an App Store Connect API key
+```
+`build --build-number <n>` overrides (must be > `lastUsed`). The number is set as CFBundleVersion in the GENERATED app's
+Info.plist (never app.json); a git-tracked `ios/` gets `project.pbxproj` and `Info.plist` restored after the build.
+History `platforms.ios.buildNumber` is the number actually used. The iOS lane also applies manual signing (team,
+Match profile, certificate, bundle id) to the app target only, between `match` and `gym`.
+
 ### Submit settings (eas.json `submit.<profile>.android`, read only)
 `serviceAccountKeyPath`, `track` (default `internal`), `releaseStatus` (default `draft`). `SUPPLY_JSON_KEY` env wins.
 `rn-shipyard submit --dry-run` validates the inputs and prints the exact fastlane command without running it

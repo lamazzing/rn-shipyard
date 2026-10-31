@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- iOS archive no longer fails with `Signing for <App> requires a development team`. After Match (read-only) and before gym, the build lane applies manual signing to the app target only (Team ID from `.shipyard/config.json`, the provisioning profile and certificate name Match exports, the bundle id) and passes gym the matching `provisioningProfiles` export mapping. No `appleTeamId` in `app.json` needed. A git-tracked `ios/` has `project.pbxproj` and `Info.plist` restored byte for byte afterwards (also on Ctrl-C). App extensions are not signed yet.
+- The failure summary shows the real error: the xcodebuild/gym or Gradle `error:` line, else fastlane's `[!]` line, else the last 15 non-empty lines, ignoring the Gemfile tip and update notices. It applies to the terminal summary, `--json` `error` and history, for iOS and Android.
+
+### Added
+- iOS build-number counter in `.shipyard/version-code.json` (`ios.lastUsed`), never reused. With an App Store Connect API key (`EXPO_ASC_*` or `eas.json` `submit.<profile>.ios.ascApi*`) the build lane reads the latest TestFlight build number and uses `max(local, latest + 1)`, like EAS remote versioning; without a key it uses the local counter and prints one hint. The number is set as `CFBundleVersion` in the generated `Info.plist` (never `app.json`) and recorded in history. New `build --build-number <n>` override; new error codes `INVALID_BUILD_NUMBER`, `BUILD_NUMBER_REUSED`, `FASTFILE_OUTDATED` (a Fastfile from an older rn-shipyard: run `rn-shipyard init` again).
+
 ## [0.2.1] - 2026-10-31
 
 ### Changed

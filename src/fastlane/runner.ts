@@ -28,7 +28,7 @@ export function fastlaneArgs(
 export async function runFastlane(
   platform: "ios" | "android",
   lane: string,
-  options: Record<string, string> = {},
+  options: Record<string, string | undefined> = {},
   execOpts: {
     json?: boolean;
     projectDir?: string;
