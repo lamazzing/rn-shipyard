@@ -18,7 +18,7 @@ export APPLE_TEAM_ID=ABCDE12345
 rn-shipyard init --platform ios
 ```
 
-`init` writes the URL into `.shipyard/config.json` and `fastlane/Matchfile`, then runs Match through the internal lane `shipyard_match_setup` (it signs in with your App Store Connect API key when one is configured, else Match asks for an Apple ID; the key file is read in place and never copied). Non-interactive with neither, `init` stops before fastlane with `setup.ios.errorCode: "MATCH_AUTH_MISSING"`: configure the key or set `FASTLANE_USER`. Running it for iOS never touches your Android setup. Without a Match password it skips that step, and the summary says "Match signing NOT set up" with the next step. Run it later with `rn-shipyard init --platform ios` after exporting the password.
+`init` writes the URL into `.shipyard/config.json` and `fastlane/Matchfile`, then runs Match through the internal lane `shipyard_match_setup` (it signs in with your App Store Connect API key when one is configured, else Match asks for an Apple ID; the key file is read in place and never copied). Non-interactive with neither, `init` stops before fastlane, writes the files, and exits `1` with `error.code: "MATCH_AUTH_MISSING"` (also `setup.ios.errorCode`): configure the key or set `FASTLANE_USER`. If Match itself fails, `init` also exits `1` (`MATCH_SETUP_FAILED`, or the platform's own code) so scripts and CI notice; the files stay and a re-run fixes it. Running it for iOS never touches your Android setup. Without a Match password it skips that step, and the summary says "Match signing NOT set up" with the next step. Run it later with `rn-shipyard init --platform ios` after exporting the password.
 
 ## Where the Match password lives
 

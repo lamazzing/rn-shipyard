@@ -149,7 +149,9 @@ describe("init: Match signs in with the App Store Connect key", () => {
 
   it("non-interactive with neither a key nor an Apple ID: fails before fastlane, fix names both options", async () => {
     const { code, json } = await run();
-    expect(code).toBe(0); // the setup is written, the iOS step is reported as failed
+    expect(code).toBe(1); // files are written, but the failed iOS step makes the exit code 1
+    expect(json.success).toBe(false);
+    expect(json.error).toMatchObject({ code: "MATCH_AUTH_MISSING", message: json.setup.ios.reason, fix: json.setup.ios.nextStep });
     expect(setupMatch).not.toHaveBeenCalled();
     expect(json.setup.ios).toMatchObject({ status: "failed", errorCode: "MATCH_AUTH_MISSING" });
     expect(json.setup.ios.reason).toContain("App Store Connect API key");
@@ -221,7 +223,7 @@ describe("init --save-match-password", () => {
     process.env.FASTLANE_USER = "me@example.com";
     vi.mocked(setupMatch).mockResolvedValueOnce({ success: false, error: "bad decrypt" });
     const { code, json } = await run({ saveMatchPassword: true });
-    expect(code).toBe(0);
+    expect(code).toBe(1);
     expect(securityCalls().find(([, a]) => a[0] === "-i")).toBeUndefined();
     expect(json.setup.ios).toMatchObject({ status: "failed", matchPasswordKeychain: "not-saved" });
     expect(json.setup.ios.matchPasswordKeychainReason).toContain("not saved");

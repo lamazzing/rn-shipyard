@@ -186,10 +186,41 @@ describe("init says what it did for iOS signing", () => {
     expect(text).not.toContain("Setup complete!");
   });
 
-  it("Match failure: status failed", async () => {
+  it("Match failure: status failed, exit 1, error envelope next to the setup detail", async () => {
     vi.mocked(setupMatch).mockResolvedValueOnce({ success: false, error: "bad decrypt" });
-    const { json } = await run({ platform: "ios" });
+    const { code, json } = await run({ platform: "ios" });
+    expect(code).toBe(1);
+    expect(json.success).toBe(false);
+    expect(json.error).toEqual({ code: "MATCH_SETUP_FAILED", message: "bad decrypt", fix: json.setup.ios.nextStep });
+    expect(json.error.fix).toContain("rn-shipyard init --platform ios");
     expect(json.setup.ios).toMatchObject({ status: "failed", reason: "bad decrypt" });
+    expect(json.config).toBeDefined();
+    expect((await config()).platforms.ios).toBeDefined();
+  });
+
+  it("text mode: Match failure exits 1 and the last line says to rerun init", async () => {
+    vi.mocked(setupMatch).mockResolvedValueOnce({ success: false, error: "bad decrypt" });
+    const { code } = await run({ platform: "ios", json: false });
+    expect(code).toBe(1);
+    expect(out[out.length - 1]).toContain("run rn-shipyard init again");
+  });
+
+  it("skipped in a terminal (user declined) stays exit 0", async () => {
+    delete process.env.MATCH_PASSWORD;
+    const { code, json } = await run({ platform: "ios" });
+    expect(code).toBe(0);
+    expect(json.success).toBe(true);
+    expect(json.setup.ios.status).toBe("skipped");
+  });
+
+  it("both platforms: Android ready, iOS failed -> exit 1, Android still configured and written", async () => {
+    vi.mocked(setupMatch).mockResolvedValueOnce({ success: false, error: "bad decrypt" });
+    const { code, json } = await run({ platform: "all", androidKeystore: "up.jks", androidCredentials: "up.json" });
+    expect(code).toBe(1);
+    expect(json.error.code).toBe("MATCH_SETUP_FAILED");
+    expect(json.setup.ios.status).toBe("failed");
+    expect(json.setup.android).toEqual({ status: "ready" });
+    expect((await config()).platforms.android.keystoreAlias).toBe("myalias");
   });
 
   it("success: status configured, password source env", async () => {

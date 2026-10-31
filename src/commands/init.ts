@@ -119,8 +119,9 @@ function redactEnvSecrets(text: string): string {
 
 export default async function initCmd(opts: InitOptions): Promise<void> {
   const prompter: { current?: Prompter } = {};
+  let exitAfter: number | undefined;
   try {
-    await runInit(opts, prompter);
+    exitAfter = await runInit(opts, prompter);
   } catch (err) {
     prompter.current?.close();
     const shipyardErr =
@@ -143,9 +144,12 @@ export default async function initCmd(opts: InitOptions): Promise<void> {
     return;
   }
   prompter.current?.close();
+  // A requested platform's setup ended "failed": everything is written and reported, but scripts must see exit 1
+  if (exitAfter) process.exit(exitAfter);
 }
 
-async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): Promise<void> {
+/** Resolves to an exit code when init finished but a requested platform's setup failed. */
+async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): Promise<number | undefined> {
   const logger = createLogger(opts.json);
   const interactive = isInteractive(opts);
   // EAS-style EXPO_* credential names -> the fastlane names every child reads
@@ -914,9 +918,17 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
   const iosOpen = iosOutcome?.status === "skipped" || iosOutcome?.status === "failed";
 
   // --- Output summary ---
+  const failedSetup =
+    iosOutcome?.status === "failed"
+      ? new ShipyardError(
+          iosOutcome.errorCode ?? "MATCH_SETUP_FAILED",
+          iosOutcome.reason ?? "iOS code signing setup failed",
+          iosOutcome.nextStep ?? "Fix the Match error above, then run: rn-shipyard init --platform ios"
+        )
+      : undefined;
   if (opts.json) {
     printJson({
-      success: true,
+      ...(failedSetup ? failedSetup.toJSON() : { success: true }),
       config: portableForOutput(projectDir, config),
       setup: {
         ...(iosOutcome
@@ -1015,7 +1027,12 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
     } else {
       console.log(chalk.dim(`  Next: ${nextSteps[0]}`));
     }
+    if (failedSetup) {
+      console.log("");
+      console.log(chalk.red("  iOS setup failed. Fix the problem above and run rn-shipyard init again."));
+    }
   }
+  return failedSetup ? 1 : undefined;
 }
 
 async function fileExists(path: string): Promise<boolean> {
