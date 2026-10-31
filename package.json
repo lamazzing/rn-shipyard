@@ -1,6 +1,6 @@
 {
   "name": "rn-shipyard",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Build and submit Expo apps locally on your Mac using Fastlane, a local alternative to EAS Build and Submit",
   "main": "dist/index.js",
   "bin": {
@@ -30,19 +30,27 @@
   "keywords": [
     "react-native",
     "expo",
-    "fastlane",
-    "build",
-    "submit",
     "eas",
+    "eas-build",
+    "eas-submit",
+    "fastlane",
+    "local-build",
     "ios",
-    "android"
+    "android",
+    "app-store",
+    "testflight",
+    "google-play",
+    "cli",
+    "mobile",
+    "build",
+    "submit"
   ],
   "author": "Luca Mazzi <luca.mazzi.dev@gmail.com>",
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/lamazzing/rn-shipyard/issues"
   },
-  "homepage": "https://github.com/lamazzing/rn-shipyard#readme",
+  "homepage": "https://lamazzing.github.io/rn-shipyard/",
   "dependencies": {
     "chalk": "^5.6.2",
     "cli-table3": "^0.6.5",
