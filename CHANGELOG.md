@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.0] - 2026-10-31
 
 ### Fixed
 - `init` now runs Match with your App Store Connect API key. It used to run `fastlane match appstore`, which asks for an Apple ID even though the same key had just passed the key check, so a non-interactive run ended with "Missing username". `init` runs the new internal lane `shipyard_match_setup`: it calls `app_store_connect_api_key` first (the key file is read in place, never copied), then `match`, which takes the key from the lane context. The key comes from `APP_STORE_CONNECT_API_KEY_*`, the `EXPO_ASC_*` aliases or `eas.json` `submit.<profile>.ios.ascApiKey*`. Without a key `init` keeps the Apple ID path; non-interactive with neither a key nor `FASTLANE_USER` (or `appleId` in `eas.json`) it now stops before starting fastlane: `setup.ios.status: "failed"`, `errorCode: "MATCH_AUTH_MISSING"`, and a `nextStep` that says to add an App Store Connect key or set `FASTLANE_USER`. `setup.ios.matchAuth` (`api-key` or `apple-id`) says which one was used. Match now runs after `fastlane/` is written (the lane lives in the Fastfile); an older Fastfile without the lane gives `FASTFILE_OUTDATED`.
