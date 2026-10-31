@@ -312,4 +312,32 @@ describe("submit (real run) iOS credentials check", () => {
     expect(await run({ platform: "ios", dryRun: false })).toBe(0);
     expect(runFastlane).toHaveBeenCalledTimes(1);
   });
+
+  it("dry-run with iOS not set up says to run init --platform ios", async () => {
+    await setup({ ios: false, aab: true });
+    const code = await run({ platform: "ios", json: true, dryRun: true });
+    expect(code).toBe(1);
+    expect(json()).toMatchObject({
+      success: false,
+      error: {
+        code: "NO_PLATFORMS",
+        message: expect.stringContaining("iOS is not set up"),
+        fix: "Run 'rn-shipyard init --platform ios' to set up iOS",
+      },
+    });
+  });
+
+  it("a real submit says the same, and prints the fix in text mode", async () => {
+    await setup({ ios: false, aab: true });
+    const code = await run({ platform: "ios", json: false, dryRun: false });
+    expect(code).toBe(1);
+    expect(out.join("\n")).toContain("Fix: Run 'rn-shipyard init --platform ios'");
+  });
+
+  it("--platform all with nothing enabled points at plain init", async () => {
+    const { noPlatformsError } = await import("../../src/commands/no-platforms.js");
+    expect(noPlatformsError("submit", "all").fix).toContain("rn-shipyard init");
+    expect(noPlatformsError("build", "android").fix).toBe("Run 'rn-shipyard init --platform android' to set up Android");
+    expect(noPlatformsError("build", "all").message).toBe("No platforms enabled for build");
+  });
 });

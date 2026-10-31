@@ -31,3 +31,19 @@ jobs:
       # Trusted publishing (OIDC) needs a recent npm; the trusted publisher allows `npm publish`.
       - run: npm install -g npm@12
       - run: npm publish --provenance --access public
+      # The registry lists a new version before its tarball is downloadable (404 for ~2 minutes).
+      # Finish only when both the metadata and the download work.
+      - name: Wait until npm serves the new version
+        run: |
+          version="$(node -p 'require("./package.json").version')"
+          url="https://registry.npmjs.org/rn-shipyard/-/rn-shipyard-${version}.tgz"
+          for attempt in $(seq 1 40); do
+            if curl -fsSIL "$url" > /dev/null && [ "$(npm view "rn-shipyard@${version}" version 2>/dev/null)" = "$version" ]; then
+              echo "rn-shipyard@${version} is available (attempt ${attempt})"
+              exit 0
+            fi
+            echo "Attempt ${attempt}/40: rn-shipyard@${version} not downloadable yet, retrying in 15s"
+            sleep 15
+          done
+          echo "::error::rn-shipyard@${version} was published but is still not downloadable from ${url} after 10 minutes"
+          exit 1

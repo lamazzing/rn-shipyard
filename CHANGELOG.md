@@ -4,6 +4,21 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- `doctor` readiness is honest: a platform missing from `.shipyard/config.json` is "not set up" (next step `rn-shipyard init --platform <p>`), never "Ready", and a submit is ready only when a successful build in history still has its `.ipa`/`.aab` on disk (otherwise "no .ipa yet: run rn-shipyard build --platform ios"). In `--json`, `readiness.<action>` gains `state` and `note`. The pre-flight of `build --submit` is unchanged.
+- `doctor`: an unset `JAVA_HOME` passes when the `java` on PATH is JDK 17+ ("not set; Gradle uses java from PATH (25.0.1)"; Gradle's wrapper uses `$JAVA_HOME/bin/java` if set, else `java` from PATH). The `export` line stays in `--json` as an optional hint. It warns only when neither works.
+- `submit` (also `--dry-run`) with the requested platform not set up now says so and names `rn-shipyard init --platform <p>` in the error and its `fix`.
+- README status: Android and iOS are both verified end to end on a real Expo app.
+
+### Added
+- `doctor` warns (never fails, never deletes) when EAS's plaintext `credentials.json` / `credentials/` are still on disk after a successful build, with the exact `rm` command and whether they are git-ignored or tracked.
+- The release workflow waits until npm serves the new tarball and `npm view` (every 15 s, up to 10 min) before finishing.
+
+### Fixed
+- `history` printed colour codes (red table header) when piped or with `NO_COLOR` set; tables are now plain unless stdout is a colour terminal.
+
 ## [0.2.1] - 2026-10-31
 
 ### Changed

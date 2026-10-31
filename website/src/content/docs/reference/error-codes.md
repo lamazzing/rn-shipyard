@@ -23,7 +23,7 @@ The Fix column is the fix text the tool prints, shortened to one line. The `--js
 | `MISSING_CONFIG_ANDROID` | 2 | No keystore password, or the credentials file lacks a field | Set `ANDROID_KEYSTORE_PASSWORD` or add the missing fields to the credentials file |
 | `MISSING_CONFIG_PROJECT` | 2 | The requirements pre-flight found only project config missing (for example `.shipyard/config.json` or `eas.json`) | Run `rn-shipyard init`, then `rn-shipyard doctor` |
 | `REQUIREMENTS_NOT_MET` | 1 | The requirements pre-flight found a blocking problem | Follow the listed fixes, then run `rn-shipyard doctor` (or pass `--skip-checks`) |
-| `NO_PLATFORMS` | 1 | No platform enabled in the config | Run `rn-shipyard init` with `--platform` |
+| `NO_PLATFORMS` | 1 | No platform enabled in the config, or the one given with `--platform` is not set up (`build`, `submit`) | Run `rn-shipyard init --platform <ios\|android>` |
 | `INVALID_FLAGS` | 1 | Conflicting or invalid flags (`init` Android flags, `doctor --platform`) | Use `--platform android` (or `all`) or drop the Android flags; pass `--android-keystore` with `--android-credentials`; use `--platform ios`, `android` or `all` |
 | `INVALID_USAGE` | 1 | Unknown option or missing argument | Run `rn-shipyard <command> --help` |
 
