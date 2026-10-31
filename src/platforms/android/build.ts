@@ -5,6 +5,7 @@ import { loadAndroidCredentials } from "./credentials.js";
 import { setGradleVersionCode, copyReleaseAab } from "./gradle.js";
 import { recordAndroidVersionCode } from "../../core/version-code.js";
 import { assertShellKeepsDottedEnv } from "./shell-env.js";
+import { extractBuildError } from "../../utils/build-errors.js";
 import { ShipyardError } from "../../utils/errors.js";
 
 export interface AndroidBuildOptions {
@@ -68,7 +69,7 @@ export async function buildAndroid(
       return {
         status: "error",
         durationSeconds: result.durationSeconds,
-        error: result.output.slice(-500),
+        error: extractBuildError(result.output),
       };
     }
 
