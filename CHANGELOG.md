@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- `NO_COLOR` is now honoured on a terminal. chalk 5 ignores it, so `doctor`, `history` and the other commands still printed colour when `NO_COLOR` was set in a terminal (piped output was already plain). A non-empty `NO_COLOR` now turns colour off, over `FORCE_COLOR` too.
+
+### Internal
+- QA suite (`npm run test:qa`, `tests/qa`): runs the built CLI against throwaway Expo projects with real git, fastlane, Gradle and CocoaPods: an `init`/`doctor` matrix over repo layouts, modes and states, a signed Android `.aab` build, iOS prebuild + pods + the real `shipyard_ios_resolve` lane, and contract checks (`--json` envelope and exit codes, no ANSI when piped, the validated App Store Connect key reaches Match). New workflow `.github/workflows/qa.yml` (pull requests, `main`, nightly, manual, `workflow_call`) `.github/workflows/qa-report.yml` opens or updates a `qa-failure` issue when a nightly or `main` run fails. See CONTRIBUTING.md.
+- Every interactive question has a stable id (`src/utils/questions.ts`) mapped to its non-interactive flag, env var or config; `tests/utils/questions.test.ts` fails on a prompt without an id or a row without a real equivalent. Behaviour is unchanged.
+
 ## [0.4.1] - 2026-10-31
 
 ### Changed

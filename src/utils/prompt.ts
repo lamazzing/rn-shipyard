@@ -1,6 +1,7 @@
 import { createInterface, type Interface } from "node:readline";
 import { Writable } from "node:stream";
 import { ShipyardError } from "./errors.js";
+import type { QuestionId } from "./questions.js";
 
 export interface PrompterOptions {
   input?: NodeJS.ReadableStream;
@@ -10,13 +11,16 @@ export interface PrompterOptions {
 }
 
 export interface Prompter {
-  /** Plain question. The default is shown in brackets and returned on empty input. */
-  ask(question: string, defaultValue?: string): Promise<string>;
+  /**
+   * Plain question. The default is shown in brackets and returned on empty input. `id` is the
+   * stable question id from utils/questions.ts (its non-interactive equivalent is listed there).
+   */
+  ask(id: QuestionId, question: string, defaultValue?: string): Promise<string>;
   /**
    * Secret question: typed characters are never echoed. A fallback (e.g. an env
    * value) is never displayed; "[from env]" is shown instead and Enter accepts it.
    */
-  askSecret(question: string, fallback?: string): Promise<string>;
+  askSecret(id: QuestionId, question: string, fallback?: string): Promise<string>;
   close(): void;
 }
 
@@ -106,12 +110,12 @@ export function createPrompter(opts: PrompterOptions = {}): Prompter {
   }
 
   return {
-    async ask(q, defaultValue) {
+    async ask(_id, q, defaultValue) {
       const suffix = defaultValue ? ` [${defaultValue}]` : "";
       const answer = await question(`  ${q}${suffix}: `, false);
       return answer.trim() || defaultValue || "";
     },
-    async askSecret(q, fallback) {
+    async askSecret(_id, q, fallback) {
       const suffix = fallback ? " [from env]" : "";
       const answer = await question(`  ${q}${suffix}: `, true);
       return answer.length > 0 ? answer : fallback ?? "";

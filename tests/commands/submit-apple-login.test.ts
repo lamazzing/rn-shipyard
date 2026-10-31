@@ -149,7 +149,7 @@ describe("submit phase 1: Apple login", () => {
     await setup({ appleId: "me@example.com" });
     mockExec({ keychain: true });
     expect(await run({ interactive: true })).toBe(0);
-    expect(askMock).toHaveBeenCalledWith("Log in to your Apple account now? (Y/n)");
+    expect(askMock).toHaveBeenCalledWith("submit.apple-login", "Log in to your Apple account now? (Y/n)");
     expect(loginCalls()).toHaveLength(1);
     const [cmd, args, opts] = loginCalls()[0];
     expect(cmd).toBe("fastlane");

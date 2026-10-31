@@ -22,7 +22,7 @@ vi.mock("../../src/utils/prompt.js", () => ({
     const id = ++prompterCount;
     events.push(`open${id}`);
     return {
-      ask: vi.fn(async (_q: string, d?: string) => d || "value"),
+      ask: vi.fn(async (_id: string, _q: string, d?: string) => d || "value"),
       askSecret: vi.fn(async () => "password1"),
       close: vi.fn(() => events.push(`close${id}`)),
     };

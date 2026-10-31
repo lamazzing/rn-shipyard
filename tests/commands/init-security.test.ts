@@ -169,10 +169,10 @@ describe("init interactive input failures", () => {
   it("interactive Android uses askSecret and passes the env value only as a hidden fallback", async () => {
     setTty(true);
     process.env.ANDROID_KEYSTORE_PASSWORD = "hunter22-secret";
-    prompter.askSecret.mockImplementation(async (_q: string, fallback?: string) => fallback ?? "");
+    prompter.askSecret.mockImplementation(async (_id: string, _q: string, fallback?: string) => fallback ?? "");
     const { code } = await run({ json: false });
     expect(code).toBe(0);
-    expect(prompter.askSecret).toHaveBeenCalledWith("Keystore password", "hunter22-secret");
+    expect(prompter.askSecret).toHaveBeenCalledWith("init.android.keystore-password", "Keystore password", "hunter22-secret");
     expect(prompter.ask).not.toHaveBeenCalled();
     const text = JSON.stringify(out);
     expect(text).not.toContain("hunter22");
@@ -254,7 +254,7 @@ describe("init Match git URL credentials", () => {
 
   it("rejects a token-bearing URL typed at the prompt", async () => {
     setTty(true);
-    prompter.ask.mockImplementation(async (q: string, d?: string) =>
+    prompter.ask.mockImplementation(async (_id: string, q: string, d?: string) =>
       q.startsWith("Match Git URL") ? TOKEN_URL : d ?? ""
     );
     const { code, json } = await run({ platform: "ios", json: false });

@@ -1,0 +1,75 @@
+name: QA
+
+# End-to-end QA: runs the BUILT rn-shipyard CLI against throwaway Expo projects with real git,
+# fastlane, Gradle and CocoaPods (tests/qa, `npm run test:qa`). No Apple account, no secrets.
+# See CONTRIBUTING.md, "QA suite". release.yml can depend on this via `uses: ./.github/workflows/qa.yml`.
+#
+# Reusable: a caller needs to grant only `contents: read`. Failure issues are NOT opened here (a
+# called workflow sees the caller's event, e.g. a release tag push); .github/workflows/qa-report.yml
+# does that from a workflow_run of this workflow's own runs.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 3 * * *" # nightly: catches new Expo / fastlane / Xcode releases
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+# A newer push to a PR supersedes the running QA; main and nightly runs always finish.
+concurrency:
+  group: qa-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  qa:
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Android SDK (preinstalled on GitHub macOS images)
+        run: |
+          echo "ANDROID_HOME=${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          test -d "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/platforms" || { echo "::error::no Android SDK platforms on this image"; exit 1; }
+          yes | "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+
+      - name: fastlane and CocoaPods
+        run: |
+          brew install fastlane
+          command -v pod || brew install cocoapods
+          fastlane --version
+          pod --version
+          xcodebuild -version
+
+      - run: npm ci
+      - run: npm run lint
+      # builds, then runs tests/qa; the JSON report lists the failing scenarios by name
+      - name: QA suite
+        run: npm run test:qa -- --reporter=verbose --reporter=json --outputFile.json=qa-results.json 2>&1 | tee qa.log; exit "${PIPESTATUS[0]}"
+
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: qa-logs
+          path: |
+            qa.log
+            qa-results.json
+          if-no-files-found: ignore
+          retention-days: 14

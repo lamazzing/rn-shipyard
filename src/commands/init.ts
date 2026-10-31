@@ -213,7 +213,7 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
         const wanted: EasPlatform[] = [...(doIos ? (["ios"] as const) : []), ...(doAndroid ? (["android"] as const) : [])];
         logger.warn("No credentials.json yet. eas-cli can download your signing credentials from Expo into it.");
         for (const line of easDownloadGuide(wanted)) console.log(`  ${line}`);
-        const answer = await getPrompter().ask(`Run \`npx eas-cli credentials\` now for ${wanted.join(" and ")}? (Y/n)`, "y");
+        const answer = await getPrompter().ask("init.eas-credentials-download", `Run \`npx eas-cli credentials\` now for ${wanted.join(" and ")}? (Y/n)`, "y");
         if (/^n/i.test(answer.trim())) throw err;
         const done = await runEasCredentialsDownload(projectDir, wanted);
         if (done.length < wanted.length) {
@@ -341,6 +341,7 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
       confirmReplace: interactive
         ? async (existing) => {
             const answer = await getPrompter().ask(
+              "init.android.replace-keystore",
               `A different keystore already exists at ${toPortablePath(projectDir, existing)}. Replace it? The old file is kept as a .bak copy (y/N)`,
               "n"
             );
@@ -528,9 +529,9 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
       }
     } else {
       const p = getPrompter();
-      bundleId = await p.ask("iOS Bundle Identifier", defaultBundleId);
-      teamId = await p.ask("Apple Team ID", defaultTeamId);
-      matchGitUrl = await p.ask("Match Git URL (no credentials in the URL)", defaultMatchUrl);
+      bundleId = await p.ask("init.ios.bundle-id", "iOS Bundle Identifier", defaultBundleId);
+      teamId = await p.ask("init.ios.team-id", "Apple Team ID", defaultTeamId);
+      matchGitUrl = await p.ask("init.ios.match-git-url", "Match Git URL (no credentials in the URL)", defaultMatchUrl);
     }
     assertCleanMatchUrl(matchGitUrl, interactive ? "the prompt" : "MATCH_GIT_URL");
 
@@ -572,6 +573,7 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
     } else if (interactive) {
       const p = getPrompter();
       const answer = await p.ask(
+        "init.ios.save-match-password",
         "Save the Match password in the macOS keychain? fastlane match reads it from there, so MATCH_PASSWORD is not needed in every shell (Y/n)",
         "y"
       );
@@ -592,9 +594,9 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
       if (!passwordSource && interactive) {
         const p = getPrompter();
         for (let attempt = 0; attempt < 3 && !password; attempt++) {
-          const first = await p.askSecret("Match password (encrypts the certificates in the Match repo)");
+          const first = await p.askSecret("init.ios.match-password", "Match password (encrypts the certificates in the Match repo)");
           if (!first) continue;
-          if ((await p.askSecret("Repeat Match password")) === first) password = first;
+          if ((await p.askSecret("init.ios.match-password-repeat", "Repeat Match password")) === first) password = first;
           else logger.warn("Passwords do not match");
         }
         if (password) passwordSource = "prompt";
@@ -738,13 +740,13 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
         const envStore = process.env.ANDROID_KEYSTORE_PASSWORD;
         keystorePassword = "";
         for (let attempt = 0; attempt < 3 && !keystorePassword; attempt++) {
-          const first = await p.askSecret("Keystore password", envStore);
+          const first = await p.askSecret("init.android.keystore-password", "Keystore password", envStore);
           if (first.length < MIN_KEYSTORE_PASSWORD) {
             logger.warn(`Keystore password must be at least ${MIN_KEYSTORE_PASSWORD} characters`);
             continue;
           }
           if (first !== envStore) {
-            const again = await p.askSecret("Repeat keystore password");
+            const again = await p.askSecret("init.android.keystore-password-repeat", "Repeat keystore password");
             if (again !== first) {
               logger.warn("Passwords do not match");
               continue;
@@ -763,7 +765,7 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
           );
         }
         keyPassword =
-          (await p.askSecret("Key password (Enter for same as keystore)", process.env.ANDROID_KEY_PASSWORD)) ||
+          (await p.askSecret("init.android.key-password", "Key password (Enter for same as keystore)", process.env.ANDROID_KEY_PASSWORD)) ||
           keystorePassword;
       }
 

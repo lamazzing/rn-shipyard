@@ -44,7 +44,7 @@ export interface SubmitOutcome {
 async function confirmAppleLogin(): Promise<boolean> {
   const prompter = createPrompter();
   try {
-    const answer = (await prompter.ask("Log in to your Apple account now? (Y/n)")).toLowerCase();
+    const answer = (await prompter.ask("submit.apple-login", "Log in to your Apple account now? (Y/n)")).toLowerCase();
     return answer === "" || answer === "y" || answer === "yes";
   } catch (err) {
     if (err instanceof ShipyardError && err.code === "INPUT_CLOSED") return false;
