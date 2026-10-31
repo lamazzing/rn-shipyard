@@ -37,7 +37,7 @@ rn-shipyard/
 │   │   ├── ios/
 │   │   │   ├── build.ts            # iOS build via Fastlane gym
 │   │   │   ├── submit.ts           # iOS submit via Fastlane pilot
-│   │   │   ├── signing.ts          # Match setup and cert management
+│   │   │   ├── signing.ts          # init's Match step: runs the shipyard_match_setup lane (ASC API key or Apple ID)
 │   │   │   ├── eas-import.ts       # init --from-eas: openssl p12 -> .cer + RSA key PEM, fastlane match import
 │   │   │   ├── workspace.ts        # Detect the single ios/*.xcworkspace + scheme
 │   │   │   └── doctor.ts           # iOS-specific env checks

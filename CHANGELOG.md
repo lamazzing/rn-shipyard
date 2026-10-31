@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- `init` now runs Match with your App Store Connect API key. It used to run `fastlane match appstore`, which asks for an Apple ID even though the same key had just passed the key check, so a non-interactive run ended with "Missing username". `init` runs the new internal lane `shipyard_match_setup`: it calls `app_store_connect_api_key` first (the key file is read in place, never copied), then `match`, which takes the key from the lane context. The key comes from `APP_STORE_CONNECT_API_KEY_*`, the `EXPO_ASC_*` aliases or `eas.json` `submit.<profile>.ios.ascApiKey*`. Without a key `init` keeps the Apple ID path; non-interactive with neither a key nor `FASTLANE_USER` (or `appleId` in `eas.json`) it now stops before starting fastlane: `setup.ios.status: "failed"`, `errorCode: "MATCH_AUTH_MISSING"`, and a `nextStep` that says to add an App Store Connect key or set `FASTLANE_USER`. `setup.ios.matchAuth` (`api-key` or `apple-id`) says which one was used. Match now runs after `fastlane/` is written (the lane lives in the Fastfile); an older Fastfile without the lane gives `FASTFILE_OUTDATED`.
+- `doctor` reported "(no git info)" for git-ignored files such as `credentials.json` and `credentials/`. The cause was not the app's folder inside the repository: `GIT_LITERAL_PATHSPECS` makes `git check-ignore` refuse to run. It is now set only for `git ls-files`, and the paths stay relative to the app folder, so an app in a subfolder of its repository is reported correctly. "no git info" now means there is no git repository (or git is missing).
+
+### Added
+- `init --save-match-password`: saves `MATCH_PASSWORD` from the environment in the keychain item fastlane match reads (`match_<git url>`), in a terminal and with `--non-interactive`. In a terminal it answers the keychain offer with yes without asking. The password goes to `security -i` on stdin, so it is never in a command line, a log or the output. An unset or empty `MATCH_PASSWORD` stops with the new error `MATCH_PASSWORD_MISSING` (exit 1); a failed save stops with `KEYCHAIN_SAVE_FAILED` (exit 1). The save happens only after Match (or the `--from-eas` import) succeeded, so a mistyped `MATCH_PASSWORD` never replaces a good keychain item; otherwise `--json` reports `setup.ios.matchPasswordKeychain: "not-saved"` with `matchPasswordKeychainReason`, and the text summary says so. A password over 1024 bytes is refused (`security -i` reads lines of about 4 KB and would cut a longer one). `--json` reports `matchPasswordKeychain: "saved"` on success. When Match fails with an App Store Connect key that the key check reported as `forbidden`, the `nextStep` adds that the role may be too low for certificates and profiles (App Manager or Admin) and names `FASTLANE_USER` as the alternative.
+- `exec` accepts an `input` option (text written to the child's stdin) for secrets that must stay out of argv.
+
 ## [0.3.0] - 2026-10-31
 
 ### Fixed

@@ -22,7 +22,7 @@ let dir: string;
 let cwd: string;
 let out: string[];
 let saved: Record<string, string | undefined>;
-const ENV = ["MATCH_PASSWORD", "MATCH_GIT_URL", "APPLE_TEAM_ID", "ANDROID_KEYSTORE_PASSWORD", "APP_STORE_CONNECT_API_KEY_KEY_ID"];
+const ENV = ["MATCH_PASSWORD", "MATCH_GIT_URL", "APPLE_TEAM_ID", "ANDROID_KEYSTORE_PASSWORD", "APP_STORE_CONNECT_API_KEY_KEY_ID", "FASTLANE_USER"];
 
 async function run(extra: Partial<InitOptions>): Promise<{ code: number; json: any }> {
   out = [];
@@ -54,6 +54,7 @@ beforeEach(async () => {
   process.env.APPLE_TEAM_ID = "ABCDE12345";
   process.env.MATCH_GIT_URL = "git@github.com:me/certs.git";
   process.env.MATCH_PASSWORD = "match-pw-123";
+  process.env.FASTLANE_USER = "me@example.com"; // Match needs an Apple ID or an App Store Connect key when piped
   await writeFile(
     join(dir, "app.json"),
     JSON.stringify({ expo: { name: "App", slug: "app", version: "1.0.0", ios: { bundleIdentifier: "com.x.app" }, android: { package: "com.x.app" } } })

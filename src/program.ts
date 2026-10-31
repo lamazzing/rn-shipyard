@@ -62,7 +62,8 @@ export function createProgram(argv: string[] = process.argv): Command {
     .option("--android-credentials <path>", "JSON file with keystorePassword, keyAlias, keyPassword (keep outside the repo)")
     .option("--android-last-version-code <n>", "Seed the versionCode counter (e.g. the EAS remote counter)")
     .option("--from-eas [path]", "Import the signing credentials `eas credentials` downloaded (default ./credentials.json)")
-    .addHelpText("after", "\nExamples:\n  $ rn-shipyard init\n  $ rn-shipyard init --platform ios\n  $ rn-shipyard init --non-interactive --platform android\n  $ rn-shipyard init --from-eas")
+    .option("--save-match-password", "Save MATCH_PASSWORD from the environment in the macOS keychain item fastlane match reads (works with --non-interactive)")
+    .addHelpText("after", "\nExamples:\n  $ rn-shipyard init\n  $ rn-shipyard init --platform ios\n  $ MATCH_PASSWORD=... rn-shipyard init --platform ios --save-match-password\n  $ rn-shipyard init --non-interactive --platform android\n  $ rn-shipyard init --from-eas")
     .action(async (_opts, cmd) => {
       const globalOpts = cmd.optsWithGlobals();
       await initCmd(globalOpts);

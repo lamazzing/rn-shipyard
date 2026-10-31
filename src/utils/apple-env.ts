@@ -58,6 +58,22 @@ export function applyEasSubmitIos<T extends Record<string, string | undefined>>(
   return env;
 }
 
+/** The App Store Connect API key variables the Fastfile lanes read (fastlane names). */
+const ASC_KEY_VARS = [
+  "APP_STORE_CONNECT_API_KEY_KEY_ID",
+  "APP_STORE_CONNECT_API_KEY_ISSUER_ID",
+  "APP_STORE_CONNECT_API_KEY_KEY_FILEPATH",
+  "APP_STORE_CONNECT_API_KEY_KEY",
+  "APP_STORE_CONNECT_API_KEY_IS_KEY_CONTENT_BASE64",
+] as const;
+
+/** Only the set key variables of an environment (never the rest of it). */
+export function pickAscKeyEnv(env: Record<string, string | undefined>): Record<string, string | undefined> {
+  const out: Record<string, string | undefined> = {};
+  for (const name of ASC_KEY_VARS) if (env[name]) out[name] = env[name];
+  return out;
+}
+
 /** App Store Connect API key triple present (fastlane names, after applyExpoEnvAliases). */
 export function hasAscApiKey(env: Record<string, string | undefined>): boolean {
   return (

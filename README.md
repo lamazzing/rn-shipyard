@@ -187,11 +187,12 @@ Each result is `✓` (fine), `!` (warning, will not stop a build) or `✗` (bloc
 | `--android-keystore <path>` | Use an existing keystore instead of generating one |
 | `--android-credentials <path>` | JSON file with keystore password, alias, key password (keep outside the repo) |
 | `--android-last-version-code <n>` | Seed the versionCode counter |
+| `--save-match-password` | iOS: save `MATCH_PASSWORD` from the environment in the macOS keychain item fastlane match reads (works with `--non-interactive`) |
 
 Interactive (readline prompts) in a terminal. With `--non-interactive`, `--json` or a non-TTY stdin it never prompts: values come from environment variables and your Expo config, and a missing value exits `2`. Password prompts never echo.
 
 - **One platform at a time is safe:** `init --platform ios` merges into an existing `.shipyard/config.json` (the Android block, `version-code.json` and `history.json` stay untouched) and regenerates `fastlane/` for every configured platform. Re-running it for the same platform replaces only that block; its defaults come from the existing config.
-- **iOS:** asks for bundle identifier, Apple Team ID and Match Git URL (defaults from your config, `APPLE_TEAM_ID`, `MATCH_GIT_URL`). The Match password comes from `MATCH_PASSWORD` (CI) or from the macOS keychain item fastlane match itself reads (`match_<git url>`); in a terminal `init` offers to save it there (macOS asks for it, it never touches the command line). It then runs `fastlane match appstore`. With neither, it skips Match and the summary and `--json` (`setup.ios.status: "skipped"`) say so, with the next step.
+- **iOS:** asks for bundle identifier, Apple Team ID and Match Git URL (defaults from your config, `APPLE_TEAM_ID`, `MATCH_GIT_URL`). The Match password comes from `MATCH_PASSWORD` (CI) or from the macOS keychain item fastlane match itself reads (`match_<git url>`); in a terminal `init` offers to save it there (macOS asks for it, it never touches the command line), and `init --save-match-password` saves `MATCH_PASSWORD` from the environment there without a terminal. It then runs Match through an internal Fastfile lane: with an App Store Connect API key (`APP_STORE_CONNECT_API_KEY_*` / `EXPO_ASC_*` / `ascApiKey*` in `eas.json`) Match signs in with the key, otherwise with an Apple ID (non-interactive without a key or `FASTLANE_USER`: `setup.ios.status: "failed"`, `errorCode: "MATCH_AUTH_MISSING"`, before fastlane starts). With neither, it skips Match and the summary and `--json` (`setup.ios.status: "skipped"`) say so, with the next step.
 - **App Store Connect key check:** when an API key is configured (`APP_STORE_CONNECT_API_KEY_*` / `EXPO_ASC_*` / `ascApiKey*` in `eas.json`), `init` makes one read-only call to App Store Connect (`GET /v1/apps?filter[bundleId]=...`) with a short-lived JWT. A wrong key fails with `ASC_KEY_INVALID` (401); a role that is too low (403, submit needs App Manager or Admin), a missing app record or no network is only a warning, since building does not need the key.
 - **Match URL:** it is committed in `.shipyard/config.json` and `fastlane/Matchfile`, so it must not contain credentials. `https://x-access-token:TOKEN@github.com/...` is rejected (`INVALID_MATCH_GIT_URL`). Use `git@github.com:org/certs.git`, or a plain `https://` URL plus `MATCH_GIT_BASIC_AUTHORIZATION`.
 - **Android:** generates `.shipyard/android/release.keystore` with `keytool`, or adopts the keystore you pass.
@@ -282,7 +283,7 @@ rn-shipyard uses Match with type `appstore`. You need a private Git repo to hold
 
 1. Create the private repo and export its URL: `export MATCH_GIT_URL=git@github.com:you/certs.git`.
 2. Choose an encryption password and `export APPLE_TEAM_ID=...`. Locally, `init` offers to save the password in the macOS keychain (fastlane match reads it there, so no `MATCH_PASSWORD` in every shell); in CI export `MATCH_PASSWORD=...`.
-3. Run `rn-shipyard init --platform ios`. It runs `fastlane match appstore` and writes the Matchfile. In a terminal, Match runs in the foreground, so Apple ID password, 2FA and git/ssh prompts work normally.
+3. Run `rn-shipyard init --platform ios`. It writes the Matchfile and runs Match (lane `shipyard_match_setup`), signing in with your App Store Connect API key when one is configured, else with an Apple ID. To save the password in the keychain without a terminal: `MATCH_PASSWORD=... rn-shipyard init --platform ios --save-match-password`. In a terminal, Match runs in the foreground, so Apple ID password, 2FA and git/ssh prompts work normally.
 4. For `submit`, provide App Store Connect credentials, see below.
 
 Each iOS `build` clones the Match repo itself first. Interactively that happens on your terminal, so ssh passphrases and credential helpers just work. In `--non-interactive` or `--json` mode nothing can prompt: load your key into ssh-agent (`ssh-add --apple-use-keychain ~/.ssh/id_ed25519`) or configure a git credential helper, otherwise the build fails with `MATCH_REPO_AUTH_FAILED`. Only git storage is supported.
@@ -396,6 +397,8 @@ More: [JSON and exit codes](https://lamazzing.github.io/rn-shipyard/reference/js
 
 - **`doctor` fails on Ruby:** `brew install fastlane`. It brings its own Ruby and the system Ruby is then ignored.
 - **`Project not initialized` (exit 2):** run `rn-shipyard init` in the project root.
+- **`MATCH_AUTH_MISSING` (`setup.ios.errorCode`):** non-interactive `init` has no App Store Connect API key and no Apple ID. Configure the key (`EXPO_ASC_API_KEY_PATH`, `EXPO_ASC_KEY_ID`, `EXPO_ASC_ISSUER_ID`, or `ascApiKey*` in `eas.json`) or set `FASTLANE_USER`, then re-run `init --platform ios`.
+- **`MATCH_PASSWORD_MISSING` / `KEYCHAIN_SAVE_FAILED` (exit 1):** `init --save-match-password` needs a non-empty `MATCH_PASSWORD` and a Mac with an unlocked login keychain.
 - **Match setup skipped:** the summary says so. Set `MATCH_PASSWORD` (or run `init` in a terminal and save the password in the keychain) and re-run `init --platform ios`; it keeps your Android setup.
 - **`VERSION_CODE_REUSED`:** pass a `--version-code` greater than the reported value, or omit the flag.
 - **`BUILD_NUMBER_REUSED`:** pass a `--build-number` greater than the reported value, or omit the flag.
