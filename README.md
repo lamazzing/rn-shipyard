@@ -41,18 +41,21 @@ npx rn-shipyard submit --platform all                     # 4. upload to App Sto
 
   Android
     ✓ JDK 17+  25.0.1
-    ! JAVA_HOME  not set; Gradle will use `java` from PATH
-        Fix:  export JAVA_HOME="/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home"   (add the line to ~/.zshrc)
+    ✓ JAVA_HOME  not set; Gradle uses java from PATH (25.0.1)
     ✓ ANDROID_HOME points to the Android SDK  ~/Library/Android/sdk
     ✓ SDK platform-tools and build-tools  build-tools 37.0.0
     ✓ keytool  available
     ✓ /bin/sh keeps env vars with dots  needed to pass signing passwords to Gradle
 
-  ✓ Project (5 checks passed)
+  Project
+    ✓ Expo project (package.json depends on expo)  expo ~54.0.0
+    ! No plaintext EAS credentials left over  a build has worked, but these still hold your signing keys/passwords in plaintext: credentials.json (git-ignored), credentials/ (git-ignored)
+        Fix:  Once your signing is safely in Match / ~/.config/rn-shipyard (rn-shipyard never deletes these): rm -r -- credentials.json credentials/
 
   ✓ Signing & submit (4 checks passed)
 
-  Ready:      iOS build, iOS submit, Android build, Android submit
+  Ready:      iOS build, Android build, Android submit
+  Not ready:  iOS submit (no .ipa yet: run `rn-shipyard build --platform ios`)
 
   Next step: Nothing blocks you (1 warning above). Run `rn-shipyard build`.
 ```
@@ -88,7 +91,7 @@ npx rn-shipyard submit --platform all                     # 4. upload to App Sto
 
 If you need cloud builds, iOS builds without a Mac, or OTA updates, use EAS. If you have a Mac and want to skip the wait, use this.
 
-> **Status (0.1.0):** the Android flow (`init`, signed `build`) is verified end to end on real Expo apps. The iOS flow (Match signing, build, App Store Connect submit) is covered by tests but has seen little real-world use yet. If something breaks on your setup, please [open an issue](https://github.com/lamazzing/rn-shipyard/issues).
+> **Status:** Android and iOS are both verified end to end on a real Expo app (iOS: Expo → Match → TestFlight upload with an App Store Connect API key, using credentials imported with `init --from-eas`). It is still a new project, so if something breaks on your setup, please [open an issue](https://github.com/lamazzing/rn-shipyard/issues).
 
 ## Prerequisites
 
@@ -174,7 +177,7 @@ Every command accepts `--json` and `--non-interactive`.
 
 A requirements check that tells you what is missing and what to type to fix it. Checks run in parallel with timeouts, so it never hangs. Groups: **System**, **iOS**, **Android**, **Project**, and **Signing & submit** for the platforms you configured. It only reports whether a secret is set, never its value.
 
-Each result is `✓` (fine), `!` (warning, will not stop a build) or `✗` (blocks the build or submit listed under "Not ready"). The summary is per action: iOS build, iOS submit, Android build, Android submit. Exit `0` when nothing failed, `2` when only project setup is missing (run `init`), `1` otherwise.
+Each result is `✓` (fine), `!` (warning, will not stop a build) or `✗` (blocks the build or submit listed under "Not ready"). A platform that is not in `.shipyard/config.json` is "not set up" (with `rn-shipyard init --platform <p>` as the next step), and a submit counts as ready only when a successful build in history still has its `.ipa`/`.aab` on disk; otherwise it says `no .ipa yet: run rn-shipyard build --platform ios`. `doctor` also warns (never fails, never deletes) when EAS's plaintext `credentials.json` / `credentials/` are still on disk after a successful build, with the exact `rm` command and whether they are git-ignored. JAVA_HOME may be unset when the `java` on PATH is JDK 17+: Gradle's wrapper uses `$JAVA_HOME/bin/java` if set and `java` from PATH otherwise. The summary is per action: iOS build, iOS submit, Android build, Android submit. Exit `0` when nothing failed, `2` when only project setup is missing (run `init`), `1` otherwise.
 
 ### `init`
 
@@ -251,7 +254,7 @@ More: [App Store Connect](https://lamazzing.github.io/rn-shipyard/guides/submit-
 | `-p, --platform <ios\|android>` | Filter by platform |
 | `-l, --limit <n>` | Entries to show (default `10`) |
 
-Shows builds and submits from `.shipyard/history.json` as a table.
+Shows builds and submits from `.shipyard/history.json` as a table. The table is plain text (no colour codes) when stdout is not a terminal or `NO_COLOR` is set.
 
 ### Global flags
 
@@ -325,6 +328,7 @@ More: [Android credentials](https://lamazzing.github.io/rn-shipyard/guides/andro
 | `GIT_SSH_COMMAND` | Base ssh command for the non-interactive Match clone |
 | `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_PASSWORD` | Android signing; override the credentials file |
 | `SUPPLY_JSON_KEY` | Path to the Google Play service-account JSON (overrides `eas.json`) |
+| `NO_COLOR`, `FORCE_COLOR` | Turn colour off / on. Output is plain when stdout is not a terminal |
 
 rn-shipyard does not load `.env` files itself. Export the variables in your shell (for example `set -a; source .env; set +a`).
 

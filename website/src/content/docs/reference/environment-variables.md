@@ -29,6 +29,12 @@ Secrets belong in the environment, not in files in your repo. Variables marked "
 | `SUPPLY_JSON_KEY` | Path to the Google Play service account JSON (overrides `eas.json`) | no |
 | `SUPPLY_JSON_KEY_DATA` | Service account JSON contents | yes |
 
+## Output
+
+| Variable | Effect |
+|---|---|
+| `NO_COLOR` | Any value turns colour off. Output is also plain when stdout is not a terminal (piped, redirected), including the `history` table. `FORCE_COLOR` turns it on |
+
 ## EAS aliases
 
 These EAS names are accepted by `doctor`, `init`, `build` and `submit`. rn-shipyard copies each one that is set onto the Fastlane name for all child processes. If the Fastlane name is also set (non-empty), the Fastlane name wins. `EXPO_APPLE_PASSWORD` and `EXPO_APPLE_APP_SPECIFIC_PASSWORD` are redacted like their Fastlane counterparts.

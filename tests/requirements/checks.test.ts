@@ -134,10 +134,21 @@ describe("Android checks", () => {
     expect((await run("jdk"))?.status).toBe("fail");
   });
 
-  it("JAVA_HOME: warn when unset, fail when it points nowhere", async () => {
+  it("JAVA_HOME unset: pass when java on PATH is JDK 17+ (Gradle uses it), export line kept as a hint", async () => {
     const unset = await run("java-home", { env: { ...fx.env, JAVA_HOME: undefined } });
-    expect(unset?.status).toBe("warn");
+    expect(unset?.status).toBe("pass");
+    expect(unset?.detail).toBe("not set; Gradle uses java from PATH (17.0.8)");
     expect(unset?.fix).toContain("java_home)");
+  });
+
+  it("JAVA_HOME unset: warn when there is no suitable java on PATH; fail when it points nowhere", async () => {
+    mockMachine(respond("java", fail("Unable to locate a Java Runtime.")));
+    const none = await run("java-home", { env: { ...fx.env, JAVA_HOME: undefined } });
+    expect(none?.status).toBe("warn");
+    mockMachine(respond("java", { exitCode: 0, stdout: "", stderr: 'openjdk version "11.0.2"' }));
+    const old = await run("java-home", { env: { ...fx.env, JAVA_HOME: undefined } });
+    expect(old?.status).toBe("warn");
+    mockMachine();
     const bad = await run("java-home", { env: { ...fx.env, JAVA_HOME: join(fx.home, "nope") } });
     expect(bad?.status).toBe("fail");
   });

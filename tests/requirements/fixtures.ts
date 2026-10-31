@@ -132,3 +132,18 @@ export async function makeFixture(opts: { ios?: boolean; android?: boolean } = {
   };
   return { dir, home, sdk, env };
 }
+
+/** Records one successful build per platform in history, with the artifact files on disk. */
+export async function addBuiltArtifacts(dir: string, platforms: ("ios" | "android")[] = ["ios", "android"]): Promise<void> {
+  await mkdir(join(dir, "output"), { recursive: true });
+  const result: Record<string, unknown> = {};
+  for (const p of platforms) {
+    const file = `output/App-1.0.0-1.${p === "ios" ? "ipa" : "aab"}`;
+    await writeFile(join(dir, file), "x");
+    result[p] = { status: "success", version: "1.0.0", artifactPath: file, durationSeconds: 1, error: null };
+  }
+  await writeFile(
+    join(dir, ".shipyard", "history.json"),
+    JSON.stringify({ entries: [{ id: "a1", timestamp: "2026-01-01T00:00:00Z", command: "build", profile: "production", platforms: result }] })
+  );
+}

@@ -107,6 +107,7 @@ export default async function doctorCmd(opts: DoctorOptions): Promise<void> {
     projectDir: process.cwd(),
     platforms,
     nonInteractive: !isInteractive(opts),
+    assessReadiness: true,
   });
 
   if (opts.json) {

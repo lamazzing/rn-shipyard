@@ -78,6 +78,13 @@ export interface Readiness {
   ready: boolean;
   /** Number of failed checks that block this action */
   problems: number;
+  /**
+   * Why the action is not ready when no check failed: "not-set-up" (platform not configured in
+   * .shipyard/config.json) or "no-artifact" (submit with nothing built yet). Absent otherwise.
+   */
+  state?: "not-set-up" | "no-artifact";
+  /** One line for the human report, with the command to run next, when `state` is set */
+  note?: string;
 }
 
 export interface RequirementsResult {
@@ -103,6 +110,12 @@ export interface RequirementsInput {
   exclude?: string[];
   /** Check groups to leave out entirely */
   excludeGroups?: CheckGroup[];
+  /**
+   * Also judge platform setup and built artifacts for the readiness summary (doctor only). A
+   * platform missing from .shipyard/config.json is "not set up" and submit needs a built artifact.
+   * Pre-flights leave it off: `build --submit` must not fail because the artifact is not built yet.
+   */
+  assessReadiness?: boolean;
   /** Per-check timeout (default 20000) */
   timeoutMs?: number;
 }
