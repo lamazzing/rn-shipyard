@@ -202,7 +202,55 @@ describe("init --save-match-password", () => {
     expect(code).toBe(1);
     expect(json).toMatchObject({ success: false, error: { code: "KEYCHAIN_SAVE_FAILED" } });
     expect(JSON.stringify(json)).not.toContain("quotes");
-    expect(setupMatch).not.toHaveBeenCalled();
+    expect(setupMatch).toHaveBeenCalled(); // the save comes after Match
+  });
+
+  it("saves only after Match worked: the store runs after setupMatch", async () => {
+    process.env.FASTLANE_USER = "me@example.com";
+    const order: string[] = [];
+    vi.mocked(setupMatch).mockImplementationOnce((async () => (order.push("match"), { success: true })) as never);
+    vi.mocked(exec).mockImplementation((async (cmd: string, args: string[]) => {
+      if (cmd === "security" && args[0] === "-i") order.push("save");
+      return cmd === "security" ? { exitCode: args[0] === "-i" ? 0 : 44, stdout: "", stderr: "" } : { exitCode: 1, stdout: "", stderr: "" };
+    }) as never);
+    await run({ saveMatchPassword: true });
+    expect(order).toEqual(["match", "save"]);
+  });
+
+  it("Match failed: the keychain item is left alone, reported as not-saved with a reason", async () => {
+    process.env.FASTLANE_USER = "me@example.com";
+    vi.mocked(setupMatch).mockResolvedValueOnce({ success: false, error: "bad decrypt" });
+    const { code, json } = await run({ saveMatchPassword: true });
+    expect(code).toBe(0);
+    expect(securityCalls().find(([, a]) => a[0] === "-i")).toBeUndefined();
+    expect(json.setup.ios).toMatchObject({ status: "failed", matchPasswordKeychain: "not-saved" });
+    expect(json.setup.ios.matchPasswordKeychainReason).toContain("not saved");
+    expect(JSON.stringify(json)).not.toContain("quotes");
+  });
+
+  it("text summary says the password was not saved when Match failed", async () => {
+    process.env.FASTLANE_USER = "me@example.com";
+    vi.mocked(setupMatch).mockResolvedValueOnce({ success: false, error: "bad decrypt" });
+    await run({ saveMatchPassword: true, json: false });
+    expect(out.join("\n")).toContain("Match password NOT saved in the keychain");
+  });
+
+  it("Match fails with a key the check found forbidden: nextStep names the role and FASTLANE_USER", async () => {
+    process.env.APP_STORE_CONNECT_API_KEY_KEY_ID = "KEYID12345";
+    process.env.APP_STORE_CONNECT_API_KEY_ISSUER_ID = "issuer-1";
+    process.env.APP_STORE_CONNECT_API_KEY_KEY = P8;
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 403 })));
+    vi.mocked(setupMatch).mockResolvedValueOnce({ success: false, error: "forbidden" });
+    const { json } = await run();
+    expect(json.setup.ios.status).toBe("failed");
+    expect(json.setup.ios.nextStep).toMatch(/App Manager or Admin.*FASTLANE_USER/);
+  });
+
+  it("an ordinary Match failure has no role hint", async () => {
+    process.env.FASTLANE_USER = "me@example.com";
+    vi.mocked(setupMatch).mockResolvedValueOnce({ success: false, error: "x" });
+    const { json } = await run();
+    expect(json.setup.ios.nextStep).not.toContain("App Manager");
   });
 
   it("without the flag nothing is written to the keychain", async () => {

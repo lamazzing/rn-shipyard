@@ -45,6 +45,7 @@ export async function storeMatchPasswordInKeychain(gitUrl: string): Promise<{ su
   }
 }
 
+const MAX_PASSWORD_BYTES = 1024;
 const securityQuote = (s: string): string => `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 
 /**
@@ -59,6 +60,10 @@ export async function storeMatchPasswordValueInKeychain(
 ): Promise<{ success: boolean; error?: string }> {
   if (!gitUrl || gitUrlSecrets(gitUrl).length > 0) return { success: false, error: "the Match git URL is empty or carries credentials" };
   // a line break would end the command and start a new one
+  // `security -i` reads lines of about 4 KB: a longer one is cut and the rest would run as a new command
+  if (Buffer.byteLength(password) > MAX_PASSWORD_BYTES) {
+    return { success: false, error: `the password is longer than ${MAX_PASSWORD_BYTES} bytes, which the macOS keychain command cannot take safely` };
+  }
   if (!password || /[\r\n\0]/.test(password) || /[\r\n\0]/.test(gitUrl)) {
     return { success: false, error: "the password is empty or contains a line break or NUL character" };
   }

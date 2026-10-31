@@ -68,6 +68,17 @@ describe("match keychain item", () => {
     expect(exec).not.toHaveBeenCalled();
   });
 
+  it("store a known value: a password over 1024 bytes is refused (security -i would cut the line), without echoing it", async () => {
+    const long = "é".repeat(600); // 1200 bytes, 600 characters
+    const r = await storeMatchPasswordValueInKeychain(URL, long);
+    expect(r.success).toBe(false);
+    expect(r.error).toContain("1024");
+    expect(r.error).not.toContain("é");
+    expect(exec).not.toHaveBeenCalled();
+    vi.mocked(exec).mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" });
+    expect((await storeMatchPasswordValueInKeychain(URL, "a".repeat(1024))).success).toBe(true);
+  });
+
   it("store a known value: a failure names the exit code, never the password", async () => {
     vi.mocked(exec).mockResolvedValueOnce({ exitCode: 36, stdout: "", stderr: "pw-shown" });
     const r = await storeMatchPasswordValueInKeychain(URL, "pw-shown");

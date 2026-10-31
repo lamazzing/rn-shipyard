@@ -61,7 +61,9 @@ interface IosSetupOutcome {
   /** Machine-readable cause when status is "failed" */
   errorCode?: string;
   /** Result of --save-match-password */
-  keychain?: "saved";
+  keychain?: "saved" | "not-saved";
+  /** Why --save-match-password did not save */
+  keychainReason?: string;
 }
 
 const nonEmpty = (v: unknown): v is string => typeof v === "string" && v.trim() !== "";
@@ -467,6 +469,7 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
   let iosImportPlan: Omit<IosEasImportOptions, "projectDir" | "interactive" | "stream"> | undefined;
   // Match setup runs after the Fastfile (which has its lane) is written; set in the iOS block below
   let runMatchSetup: (() => Promise<void>) | undefined;
+  let pendingKeychainSave: { gitUrl: string; password: string } | undefined;
   if (opts.saveMatchPassword && !doIos) {
     logger.warn("--save-match-password only applies to iOS and is ignored for this platform");
   }
@@ -554,24 +557,9 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
     // fastlane match itself reads ("match_<git url>"), else (interactive) offer to save it there.
     let passwordSource: IosSetupOutcome["passwordSource"];
     let password = process.env.MATCH_PASSWORD || undefined;
-    let keychain: Pick<IosSetupOutcome, "keychain"> = {};
-    if (opts.saveMatchPassword && password) {
-      // The flag answers the offer below with yes, interactive or not: the value comes from the
-      // environment, nothing is asked. It goes to `security` on stdin, never into argv or a log.
-      const stored = await storeMatchPasswordValueInKeychain(matchGitUrl, password);
-      if (!stored.success) {
-        return fail(
-          new ShipyardError(
-            "KEYCHAIN_SAVE_FAILED",
-            `Could not save the Match password in the macOS keychain: ${stored.error ?? "unknown error"}`,
-            "Run this on a Mac with a logged-in keychain (security needs the login keychain to be unlocked), or drop --save-match-password and keep MATCH_PASSWORD in the environment"
-          ),
-          1
-        );
-      }
-      keychain = { keychain: "saved" };
-      logger.success("Saved the Match password in the macOS keychain (fastlane match reads it from there)");
-    }
+    // --save-match-password: the save happens after Match worked (a mistyped password must not
+    // overwrite a good keychain item); see "pendingKeychainSave" below the Match step.
+    if (opts.saveMatchPassword && password) pendingKeychainSave = { gitUrl: matchGitUrl, password };
     if (password) passwordSource = "env";
     else if (await hasMatchPasswordInKeychain(matchGitUrl)) {
       passwordSource = "keychain";
@@ -617,7 +605,7 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
         );
       }
       iosImportPlan = { targets: easCreds.ios, gitUrl: matchGitUrl, teamId, bundleId, matchPassword: password };
-      iosOutcome = { status: "imported", passwordSource, ascKey, ...keychain };
+      iosOutcome = { status: "imported", passwordSource, ascKey };
     } else if (passwordSource) {
       const ascKeyEnv = hasAscApiKey(ascEnv) ? pickAscKeyEnv(ascEnv) : undefined;
       const matchAuth: IosSetupOutcome["matchAuth"] = ascKeyEnv ? "api-key" : "apple-id";
@@ -630,7 +618,7 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
           "Add an App Store Connect API key (EXPO_ASC_API_KEY_PATH, EXPO_ASC_KEY_ID and EXPO_ASC_ISSUER_ID, or ascApiKeyPath / ascApiKeyId / ascApiKeyIssuerId in eas.json submit.production.ios) or set FASTLANE_USER, then run: rn-shipyard init --platform ios --non-interactive";
         logger.warn(`Match setup skipped: ${reason}`);
         logger.info(`Fix: ${nextStep}`);
-        iosOutcome = { status: "failed", passwordSource, reason, nextStep, errorCode: "MATCH_AUTH_MISSING", ascKey, ...keychain };
+        iosOutcome = { status: "failed", passwordSource, reason, nextStep, errorCode: "MATCH_AUTH_MISSING", ascKey };
       } else {
         runMatchSetup = async () => {
           logger.info(
@@ -648,7 +636,7 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
           });
           if (matchResult.success) {
             logger.success("iOS code signing configured");
-            iosOutcome = { status: "configured", passwordSource, ascKey, matchAuth, ...keychain };
+            iosOutcome = { status: "configured", passwordSource, ascKey, matchAuth };
           } else {
             logger.warn(`Match setup failed: ${matchResult.error}`);
             logger.info("Fix the problem above and run 'rn-shipyard init --platform ios' again");
@@ -656,10 +644,13 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
               status: "failed",
               passwordSource,
               reason: String(matchResult.error ?? "Match setup failed").slice(0, 300),
-              nextStep: "Fix the Match error above, then run: rn-shipyard init --platform ios",
+              nextStep:
+                "Fix the Match error above, then run: rn-shipyard init --platform ios" +
+                (ascKey?.status === "forbidden" && matchAuth === "api-key"
+                  ? ". The App Store Connect key's role may be too low to create certificates and profiles (it needs App Manager or Admin); use a key with that role, or sign in with an Apple ID instead (set FASTLANE_USER)"
+                  : ""),
               ascKey,
               matchAuth,
-              ...keychain,
             };
           }
         };
@@ -861,6 +852,29 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
     }
   }
 
+  // --- --save-match-password: only now that Match worked (or the import did) ---
+  if (pendingKeychainSave && iosOutcome) {
+    if (iosOutcome.status === "configured" || iosOutcome.status === "imported") {
+      const stored = await storeMatchPasswordValueInKeychain(pendingKeychainSave.gitUrl, pendingKeychainSave.password);
+      if (!stored.success) {
+        return fail(
+          new ShipyardError(
+            "KEYCHAIN_SAVE_FAILED",
+            `Match worked, but the Match password could not be saved in the macOS keychain: ${stored.error ?? "unknown error"}`,
+            "Run this on a Mac with a logged-in keychain (security needs the login keychain to be unlocked), or drop --save-match-password and keep MATCH_PASSWORD in the environment"
+          ),
+          1
+        );
+      }
+      iosOutcome.keychain = "saved";
+      logger.success("Saved the Match password in the macOS keychain (fastlane match reads it from there)");
+    } else {
+      iosOutcome.keychain = "not-saved";
+      iosOutcome.keychainReason = `Match did not succeed (${iosOutcome.status}), so the password was not saved; a wrong password would replace a good keychain item`;
+      logger.warn(`--save-match-password: ${iosOutcome.keychainReason}`);
+    }
+  }
+
   // --- Write config ---
   await writeConfig(projectDir, config);
   logger.success("Created .shipyard/config.json");
@@ -916,6 +930,7 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
                 ...(iosOutcome.matchAuth ? { matchAuth: iosOutcome.matchAuth } : {}),
                 ...(iosOutcome.errorCode ? { errorCode: iosOutcome.errorCode } : {}),
                 ...(iosOutcome.keychain ? { matchPasswordKeychain: iosOutcome.keychain } : {}),
+                ...(iosOutcome.keychainReason ? { matchPasswordKeychainReason: iosOutcome.keychainReason } : {}),
               },
             }
           : {}),
@@ -982,6 +997,8 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
       }
       if (iosOutcome.keychain === "saved") {
         console.log(`  ${chalk.green("✓")} iOS: Match password saved in the macOS keychain`);
+      } else if (iosOutcome.keychain === "not-saved") {
+        console.log(`  ${chalk.yellow("!")} iOS: Match password NOT saved in the keychain (${iosOutcome.keychainReason})`);
       }
     } else if (config.platforms.ios) {
       console.log(chalk.dim(`  - iOS: unchanged (kept from .shipyard/config.json)`));
