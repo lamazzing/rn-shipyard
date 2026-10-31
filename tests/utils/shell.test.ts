@@ -208,3 +208,13 @@ describe("redactSecrets / createStreamRedactor", () => {
     expect(r.push("xabcab") + r.flush()).toBe("x***");
   });
 });
+
+describe("empty MATCH_PASSWORD", () => {
+  it("is removed from the child environment (Ruby would read \"\" as a passphrase), a real one is kept", async () => {
+    const probe = 'process.stdout.write(JSON.stringify({ has: "MATCH_PASSWORD" in process.env }))';
+    const empty = await exec(node, ["-e", probe], { env: { MATCH_PASSWORD: "" } });
+    expect(JSON.parse(empty.stdout)).toEqual({ has: false });
+    const real = await exec(node, ["-e", probe], { env: { MATCH_PASSWORD: "s3cretpw" } });
+    expect(JSON.parse(real.stdout).has).toBe(true);
+  });
+});

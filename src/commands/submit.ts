@@ -13,6 +13,7 @@ import { createLogger } from "../utils/logger.js";
 import { ShipyardError } from "../utils/errors.js";
 import { printJson } from "../core/output.js";
 import { isInteractive } from "../utils/interactive.js";
+import { noPlatformsError } from "./no-platforms.js";
 
 export interface SubmitOptions {
   platform: string;
@@ -129,12 +130,11 @@ export async function runSubmit(opts: SubmitOptions): Promise<SubmitOutcome> {
     config.platforms.android?.enabled === true;
 
   if (!doIos && !doAndroid) {
-    const err = new ShipyardError(
-      "NO_PLATFORMS",
-      "No platforms enabled for submit",
-      "Run 'rn-shipyard init' with --platform to configure platforms"
-    );
-    if (!opts.json) logger.error(err.message);
+    const err = noPlatformsError("submit", opts.platform);
+    if (!opts.json) {
+      logger.error(err.message);
+      logger.info(`Fix: ${err.fix}`);
+    }
     return done(1, err.toJSON());
   }
 

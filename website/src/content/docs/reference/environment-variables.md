@@ -10,7 +10,7 @@ Secrets belong in the environment, not in files in your repo. Variables marked "
 | Variable | Used for | Redacted |
 |---|---|---|
 | `MATCH_GIT_URL` | Match repo URL (iOS signing, `init`). Must not contain credentials | password or token inside the URL, if any |
-| `MATCH_PASSWORD` | Match encryption password | yes |
+| `MATCH_PASSWORD` | Match encryption password. CI sets it. Locally it is optional: when unset, fastlane match (and rn-shipyard's checks) use the macOS keychain item `match_<git url>`, which `init` can save for you | yes |
 | `APPLE_TEAM_ID` | Apple Developer Team ID | no |
 | `MATCH_GIT_BASIC_AUTHORIZATION` | base64 of `user:token` for an HTTPS Match repo | yes, and the decoded value |
 | `MATCH_GIT_BEARER_AUTHORIZATION` | Bearer token for the Match repo | yes |
@@ -29,6 +29,12 @@ Secrets belong in the environment, not in files in your repo. Variables marked "
 | `SUPPLY_JSON_KEY` | Path to the Google Play service account JSON (overrides `eas.json`) | no |
 | `SUPPLY_JSON_KEY_DATA` | Service account JSON contents | yes |
 
+## Output
+
+| Variable | Effect |
+|---|---|
+| `NO_COLOR` | Any value turns colour off. Output is also plain when stdout is not a terminal (piped, redirected), including the `history` table. `FORCE_COLOR` turns it on |
+
 ## EAS aliases
 
 These EAS names are accepted by `doctor`, `init`, `build` and `submit`. rn-shipyard copies each one that is set onto the Fastlane name for all child processes. If the Fastlane name is also set (non-empty), the Fastlane name wins. `EXPO_APPLE_PASSWORD` and `EXPO_APPLE_APP_SPECIFIC_PASSWORD` are redacted like their Fastlane counterparts.
@@ -44,6 +50,8 @@ These EAS names are accepted by `doctor`, `init`, `build` and `submit`. rn-shipy
 | `EXPO_ASC_API_KEY_PATH` | `APP_STORE_CONNECT_API_KEY_KEY_FILEPATH` |
 | `EXPO_ASC_KEY_ID` | `APP_STORE_CONNECT_API_KEY_KEY_ID` |
 | `EXPO_ASC_ISSUER_ID` | `APP_STORE_CONNECT_API_KEY_ISSUER_ID` |
+
+The three `*_ASC_*` / `APP_STORE_CONNECT_API_KEY_*` names also let `build` read the latest TestFlight build number for the iOS [build number counter](/guides/version-numbers/#ios-the-build-number-counter). `build` also reads them from `eas.json` `submit.<profile>.ios` (`ascApiKeyPath`, `ascApiKeyId`, `ascApiKeyIssuerId`).
 
 ## CI and interactive mode
 

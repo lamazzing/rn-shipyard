@@ -14,6 +14,7 @@ vi.mock("../../src/core/config.js", () => ({
   writeConfig: vi.fn(),
   configExists: vi.fn(),
   readConfig: vi.fn(),
+  readExistingConfig: vi.fn(async () => undefined),
 }));
 
 vi.mock("../../src/fastlane/generator.js", () => ({

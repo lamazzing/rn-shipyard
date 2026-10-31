@@ -5,7 +5,7 @@ vi.mock("../../src/utils/shell.js", () => ({ exec: vi.fn() }));
 import { exec } from "../../src/utils/shell.js";
 import doctorCmd, { exitCodeFor, renderReport, toJson } from "../../src/commands/doctor.js";
 import { runRequirementChecks } from "../../src/requirements/index.js";
-import { mockMachine, missing, makeFixture, FAKE, type Fixture } from "../requirements/fixtures.js";
+import { mockMachine, missing, respond, makeFixture, addBuiltArtifacts, FAKE, type Fixture } from "../requirements/fixtures.js";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -27,6 +27,7 @@ beforeEach(async () => {
   vi.mocked(exec).mockReset();
   mockMachine();
   fx = await makeFixture();
+  await addBuiltArtifacts(fx.dir);
   Object.assign(process.env, fx.env, {
     FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD: FAKE.appPass,
     ANDROID_KEYSTORE_PASSWORD: FAKE.keystore,
@@ -66,10 +67,10 @@ describe("doctor command", () => {
   });
 
   it("warnings alone exit 0 and show !", async () => {
-    delete process.env.JAVA_HOME;
+    mockMachine(respond("xcodebuild", { exitCode: 0, stdout: "Xcode 14.3", stderr: "" }, "-version"));
     const text = await runDoctor();
     expect(exitCode).toBe(0);
-    expect(text).toContain("! JAVA_HOME");
+    expect(text).toContain("! Xcode >= 15");
   });
 
   it("exit 2 when the only failures are missing project config", async () => {

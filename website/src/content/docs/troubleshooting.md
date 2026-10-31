@@ -11,7 +11,7 @@ First, run `rn-shipyard doctor`. Most problems show up there with a fix command.
 
 **`Project not initialized` (exit 2).** Run `rn-shipyard init` in the project root.
 
-**Match setup skipped.** Set `MATCH_PASSWORD` and re-run `init --platform ios`, or run `fastlane match appstore` yourself.
+**Match setup skipped.** The `init` summary says "Match signing NOT set up". Set `MATCH_PASSWORD`, or run `init` in a terminal and save the password in the macOS keychain, then re-run `init --platform ios`. Your Android setup is kept.
 
 **`INVALID_MATCH_GIT_URL`.** The URL has a token in it. Use an SSH URL, or a plain `https://` URL with `MATCH_GIT_BASIC_AUTHORIZATION`.
 
@@ -24,6 +24,14 @@ First, run `rn-shipyard doctor`. Most problems show up there with a fix command.
 **`SHELL_DROPS_DOTTED_ENV`.** `/bin/sh` must be the system default. Check `ls -l /bin/sh`.
 
 **`VERSION_CODE_REUSED`.** Pass a `--version-code` greater than the reported last-used value, or omit the flag.
+
+**`BUILD_NUMBER_REUSED`.** Pass a `--build-number` greater than the reported last-used value, or omit the flag.
+
+**`FASTFILE_OUTDATED`.** `fastlane/Fastfile` came from an older rn-shipyard whose iOS lane does not set up signing or the build number. Run `rn-shipyard init` again.
+
+**`Signing for <App> requires a development team`.** Fixed by current versions: the build lane applies your Team ID and the Match profile to the app target. If you still see it, regenerate the Fastfile with `rn-shipyard init`. App extension targets are not signed by rn-shipyard.
+
+**The build number was already used on App Store Connect.** Give `build` an App Store Connect API key (`EXPO_ASC_KEY_ID`, `EXPO_ASC_ISSUER_ID`, `EXPO_ASC_API_KEY_PATH`) so it continues after the latest TestFlight build, or pass `--build-number <n>`.
 
 **`XCWORKSPACE_NOT_FOUND`.** Prebuild did not produce a workspace. Check that CocoaPods installed.
 

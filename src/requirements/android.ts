@@ -96,9 +96,19 @@ export const androidChecks: CheckDef[] = [
       const detected = await detectJavaHome();
       const fix = `export JAVA_HOME="${detected ?? "$(/usr/libexec/java_home)"}"   (add the line to ~/.zshrc)`;
       if (!home) {
+        // Gradle's wrapper (gradlew) runs $JAVA_HOME/bin/java when JAVA_HOME is set, else `java`
+        // from PATH. So an unset JAVA_HOME is fine whenever the java on PATH is a suitable JDK.
+        const r = await tryExec("java", ["-version"]);
+        const out = r ? r.stderr || r.stdout : "";
+        const major = r && r.exitCode === 0 ? javaMajor(out) : undefined;
+        if (major !== undefined && major >= 17) {
+          const version = out.match(/version\s+"([^"]+)"/)?.[1] ?? String(major);
+          // the export line is an optional hint: shown in --json only, since a pass prints no fix
+          return { status: "pass", detail: `not set; Gradle uses java from PATH (${version})`, fix };
+        }
         return {
           status: "warn",
-          detail: "not set; Gradle will use `java` from PATH",
+          detail: "not set, and no JDK 17+ on PATH for Gradle to use",
           fix,
           docs: DOCS,
         };

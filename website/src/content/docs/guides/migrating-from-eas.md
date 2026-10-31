@@ -61,7 +61,18 @@ The EAS names for Apple and App Store Connect credentials (`EXPO_APPLE_ID`, `EXP
 npx eas-cli credentials
 ```
 
-Choose the platform, then **credentials.json: Upload/Download credentials between EAS servers and your local json**, then **Download credentials from EAS to credentials.json**. Run it in the project folder, once per platform. It writes `credentials.json` plus a `credentials/` folder (`credentials/android/keystore.jks`, `credentials/ios/dist-cert.p12`, `credentials/ios/profile.mobileprovision`). `credentials.json` holds the passwords in plain text. An app with extensions (several iOS targets) gets one entry per target.
+Run it in the project folder, once per platform (`npx eas-cli credentials -p ios`). eas-cli has no non-interactive download, so it is a menu. These are all its questions, in order:
+
+1. Expo login, if you are not signed in (`npx eas-cli login`).
+2. "Which build profile do you want to configure?" (only if `eas.json` has several): **production**.
+3. iOS only: "Do you want to log in to your Apple account?": answer **n**. The download only reads Expo's servers, so no Apple login is needed (eas-cli skips the question when `EXPO_ASC_API_KEY_PATH` or `EXPO_ASC_KEY_ID` is set, and then signs in with that key instead).
+4. "What do you want to do?": **credentials.json: Upload/Download credentials between EAS servers and your local json**.
+5. **Download credentials from EAS to credentials.json**.
+6. "Press any key to continue", then **Go back** and **Exit**. Do not press Ctrl-C.
+
+In a terminal you can skip all of this: if `credentials.json` is missing, `rn-shipyard init --from-eas` prints these answers and offers to run `npx eas-cli credentials -p <platform>` for you, then imports. (`npx` may ask once to install `eas-cli`.)
+
+ It writes `credentials.json` plus a `credentials/` folder (`credentials/android/keystore.jks`, `credentials/ios/dist-cert.p12`, `credentials/ios/profile.mobileprovision`). `credentials.json` holds the passwords in plain text. An app with extensions (several iOS targets) gets one entry per target.
 
 ### 2. Import
 
@@ -71,13 +82,13 @@ rn-shipyard init --platform android --from-eas           # one platform
 rn-shipyard init --from-eas path/to/credentials.json     # another location
 ```
 
-If the file is missing, `init` stops with `EAS_CREDENTIALS_NOT_FOUND` (exit `2`) and repeats the steps above. A platform that is not in the file is skipped with a warning; `init` never generates a new key in its place.
+If the file is missing and there is no terminal (`--non-interactive`, `--json`, CI), `init` stops with `EAS_CREDENTIALS_NOT_FOUND` (exit `2`) and repeats the menu path in `fix`. A platform that is not in the file is skipped with a warning; `init` never generates a new key in its place.
 
 **Android.** `init` opens the keystore with `keytool` (passwords through the environment, never argv), checks the key alias and the key password, and prints the SHA-256 certificate fingerprint. It copies the keystore to `~/.config/rn-shipyard/<slug>/release.keystore` and writes `android-credentials.json` next to it (folder mode `700`, files `600`), then configures `.shipyard/config.json` with `~/` paths, exactly like `--android-keystore` and `--android-credentials`. Compare the fingerprint with Google Play Console > your app > Test and release > App integrity > App signing > Upload key certificate: they must be identical. A different keystore already in that folder is never overwritten silently: in a terminal you are asked (the old file is kept as `.bak-<time>`), with `--non-interactive` the command stops with `EAS_KEYSTORE_EXISTS`. If EAS managed your versionCode, add `--android-last-version-code <n>`.
 
 **iOS.** `init` converts the EAS distribution certificate in a private temporary folder (mode `700`, removed on success, failure and Ctrl-C): EAS's `.p12` has a password, while Match stores the certificate as a `.cer` plus the private key as an unencrypted RSA PEM (named `.p12`). So it extracts those two with `openssl` (the password goes through the environment, never argv; macOS's LibreSSL and Homebrew's OpenSSL 3+ both work; a non-RSA key is refused). The plaintext key exists only in the temp folder. Then it runs `fastlane match import` through an internal lane (`shipyard_match_import`). That command matches the certificate with your Apple developer account, encrypts the files with `MATCH_PASSWORD`, and commits and **pushes** them to your Match repo. Every target's provisioning profile is imported. You need:
 
-- `MATCH_GIT_URL`, `APPLE_TEAM_ID` and `MATCH_PASSWORD` (in a terminal `init` asks for what is missing; for a new repo choose the password now and keep it).
+- `MATCH_GIT_URL`, `APPLE_TEAM_ID` and the Match password: `MATCH_PASSWORD`, or the macOS keychain item match reads (in a terminal `init` asks for what is missing and offers to save the password in the keychain; for a new repo choose the password now and keep it).
 - Git access to the repo and an Apple login. In a terminal both prompt normally on your own terminal (Apple ID, 2FA). With `--non-interactive` there is no prompt: use an App Store Connect API key (`APP_STORE_CONNECT_API_KEY_KEY_ID`, `_ISSUER_ID`, `_KEY_FILEPATH`) and ssh-agent or `MATCH_GIT_BASIC_AUTHORIZATION`.
 
 **Known limitation:** profiles of app extensions are imported into the repo, but `build` only fetches the profile of the main bundle ID (`ios.bundleIdentifier`).
@@ -132,6 +143,10 @@ npx eas-cli build:version:get -p android -e production
 ```
 
 More in [Android keystore and credentials](/guides/android-credentials/).
+
+## iOS build numbers
+
+EAS remote versioning kept your build number. rn-shipyard numbers iOS builds from `.shipyard/version-code.json`, `expo.ios.buildNumber` or 1, and, with an App Store Connect API key, from the latest TestFlight build. Without a key the counter can start below what App Store Connect already has, so pass the key or `--build-number <n>` above TestFlight's latest. See [Version numbers](/guides/version-numbers/#ios-the-build-number-counter). App extensions are not signed by the build lane yet.
 
 ## iOS certificates
 

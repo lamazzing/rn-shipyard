@@ -17,20 +17,27 @@ import { ShipyardError } from "../utils/errors.js";
 
 const FILE = "version-code.json";
 
-interface CounterFile {
+/** .shipyard/version-code.json: one counter per platform (iOS: see build-number.ts). */
+export interface CounterFile {
   android?: { lastUsed?: number };
+  ios?: { lastUsed?: number };
 }
 
 function counterPath(projectDir: string): string {
   return join(projectDir, ".shipyard", FILE);
 }
 
-async function readCounter(projectDir: string): Promise<CounterFile> {
+export async function readCounter(projectDir: string): Promise<CounterFile> {
   try {
     return JSON.parse(await readFile(counterPath(projectDir), "utf-8"));
   } catch {
     return {};
   }
+}
+
+export async function writeCounter(projectDir: string, file: CounterFile): Promise<void> {
+  await mkdir(join(projectDir, ".shipyard"), { recursive: true });
+  await writeFile(counterPath(projectDir), JSON.stringify(file, null, 2) + "\n");
 }
 
 export async function getLastUsedAndroidVersionCode(
@@ -59,8 +66,7 @@ export async function recordAndroidVersionCode(
   const current = await getLastUsedAndroidVersionCode(projectDir);
   const file = await readCounter(projectDir);
   file.android = { lastUsed: Math.max(current, versionCode) };
-  await mkdir(join(projectDir, ".shipyard"), { recursive: true });
-  await writeFile(counterPath(projectDir), JSON.stringify(file, null, 2) + "\n");
+  await writeCounter(projectDir, file);
 }
 
 export interface ResolvedVersionCode {

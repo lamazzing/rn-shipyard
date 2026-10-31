@@ -1,22 +1,44 @@
 ---
 title: Version numbers
-description: rn-shipyard never bumps your version. It warns when the iOS version looks unchanged and keeps an Android versionCode counter.
+description: rn-shipyard never bumps your marketing version. It numbers iOS builds from a counter and the latest TestFlight build, and keeps an Android versionCode counter.
 ---
 
-rn-shipyard does not bump versions and never edits `app.json`. You decide the marketing version and the iOS build number. The one thing it maintains is the Android `versionCode`, because Google Play rejects a reused code.
+rn-shipyard does not bump versions and never edits `app.json`. You decide the marketing version. What it maintains are the iOS build number and the Android `versionCode`, because App Store Connect and Google Play reject reused numbers.
 
-## iOS: a warning
+## iOS: the build number counter
 
-Before building, `build` compares the current `expo.version` and `expo.ios.buildNumber` with the last successful iOS build in `.shipyard/history.json`. If both are the same you get a warning:
+The marketing version (`expo.version`) is yours: rn-shipyard never bumps it. The build number (`CFBundleVersion`) is numbered by rn-shipyard, because App Store Connect rejects a reused one:
 
 ```text
-iOS version 1.2.0 (build 12) was already built successfully on 2026-02-23T14:30:00Z.
-Did you forget to bump the version or build number?
+lastUsed = max(.shipyard/version-code.json ios.lastUsed, highest numeric build number of a successful iOS build in history)
+local    = max(expo.ios.buildNumber ?? 1, lastUsed + 1)       # integers only, anything else is ignored with a warning
+number   = max(local, latest TestFlight build + 1)            # only when an App Store Connect API key is available
 ```
 
-It is a warning only. Silence it with `--skip-version-check`.
+- With `EXPO_ASC_KEY_ID`, `EXPO_ASC_ISSUER_ID` and `EXPO_ASC_API_KEY_PATH` (or `submit.<profile>.ios.ascApiKeyId`, `ascApiKeyIssuerId`, `ascApiKeyPath` in `eas.json`), the build lane asks App Store Connect for the latest build number of the app, the way EAS remote versioning does. If the call fails, it warns and uses the local counter.
+- Without a key, the local counter is used and one hint line says so.
+- The number is written to the generated app's `Info.plist`. It is never written to `app.json`. When `ios/` is tracked in git, the file is restored after the build.
+- The counter advances only after a successful build, and the number is recorded in `.shipyard/history.json`. Commit `.shipyard/version-code.json` (it holds the Android and iOS counters).
+- The `.ipa` is named with the number actually used.
 
-Bump the version yourself in `app.json` (or your dynamic config) before building.
+### Override
+
+```bash
+rn-shipyard build --platform ios --build-number 12
+```
+
+The value must be greater than `lastUsed` (`BUILD_NUMBER_REUSED`) and, when TestFlight can be read, greater than its latest build (the lane stops). A non-positive-integer gives `INVALID_BUILD_NUMBER`.
+
+App extensions keep the build number their project gives them; rn-shipyard only sets the app target's (extensions are not signed by the build lane yet).
+
+Caveats:
+
+- **Without an App Store Connect key** the counter starts at `expo.ios.buildNumber` or 1, which App Store Connect may already have used. If you come from EAS, give `build` an API key (`EXPO_ASC_KEY_ID`, `EXPO_ASC_ISSUER_ID`, `EXPO_ASC_API_KEY_PATH`) or pass `--build-number` above TestFlight's latest build.
+- **Concurrent builds** (two machines, or two runs at once) can pick the same number; the counter is a local file.
+
+## Marketing version warning
+
+Before building, `build` compares the current `expo.version` and `expo.ios.buildNumber` with the last successful iOS build in `.shipyard/history.json`. If both are the same you get a warning. It is a warning only; silence it with `--skip-version-check`. Bump the version yourself in `app.json` (or your dynamic config).
 
 ## Android: the versionCode counter
 

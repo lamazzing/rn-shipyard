@@ -5,6 +5,9 @@ import { readProfileEnv, parseAppConfig, profileEnvWarnings } from "../core/eas-
 import { appendHistory, type PlatformResult } from "../core/history.js";
 import { checkVersion } from "../core/version-check.js";
 import { resolveAndroidVersionCode } from "../core/version-code.js";
+import { resolveIosBuildNumber, BUILD_NUMBER_TOKEN } from "../core/build-number.js";
+import { applyExpoEnvAliases, applyEasSubmitIos, hasAscApiKey } from "../utils/apple-env.js";
+import { parseEasConfig } from "../core/eas-parser.js";
 import { buildIos } from "../platforms/ios/build.js";
 import { buildAndroid } from "../platforms/android/build.js";
 import { exec } from "../utils/shell.js";
@@ -19,6 +22,7 @@ import { ShipyardError, exitCodeForError } from "../utils/errors.js";
 import { printJson } from "../core/output.js";
 import { runSubmit, appleLoginPhase, readIosAppleId, type AppleLoginOutcome } from "./submit.js";
 import { runPreflight } from "./preflight.js";
+import { noPlatformsError } from "./no-platforms.js";
 
 export interface BuildOptions {
   platform: string;
@@ -28,6 +32,8 @@ export interface BuildOptions {
   skipChecks?: boolean;
   skipVersionCheck: boolean;
   versionCode?: string;
+  /** iOS build number override (CFBundleVersion); must be greater than the last used one */
+  buildNumber?: string;
   json: boolean;
   nonInteractive: boolean;
 }
@@ -43,6 +49,11 @@ interface PrebuildInfo {
 /** File-name-safe artifact stem: app names may contain spaces, slashes or `..`. */
 export function safeFileStem(name: string): string {
   return name.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^\.+/, "_") || "app";
+}
+
+function iosBuildNumberFrom(planned: number | undefined, used: number | undefined): string | undefined {
+  const n = used ?? planned;
+  return n !== undefined ? String(n) : undefined;
 }
 
 export default async function buildCmd(opts: BuildOptions): Promise<void> {
@@ -127,15 +138,12 @@ export default async function buildCmd(opts: BuildOptions): Promise<void> {
     config.platforms.android?.enabled === true;
 
   if (!doIos && !doAndroid) {
-    const err = new ShipyardError(
-      "NO_PLATFORMS",
-      "No platforms enabled for build",
-      "Run 'rn-shipyard init' with --platform to configure platforms"
-    );
+    const err = noPlatformsError("build", opts.platform);
     if (opts.json) {
       printJson(err.toJSON());
     } else {
       logger.error(err.message);
+      logger.info(`Fix: ${err.fix}`);
     }
     process.exit(1);
   }
@@ -169,6 +177,53 @@ export default async function buildCmd(opts: BuildOptions): Promise<void> {
           logger.info(`Fix: ${err.fix}`);
         }
         process.exit(1);
+      }
+      throw err;
+    }
+  }
+
+  // iOS build number (CFBundleVersion): never reuse one (see src/core/build-number.ts). The
+  // lane raises it above the latest TestFlight build when an App Store Connect API key is set.
+  let iosBuildNumber: number | undefined;
+  let iosBuildNumberOverride = false;
+  if (doIos) {
+    // EXPO_ASC_* names and eas.json submit.<profile>.ios give the build lane the same App Store
+    // Connect API key `submit` uses (applied to process.env, which fastlane inherits)
+    applyExpoEnvAliases();
+    try {
+      applyEasSubmitIos((await parseEasConfig(projectDir)).submit?.[opts.profile]?.ios, projectDir);
+    } catch {
+      // no eas.json submit config: environment variables only
+    }
+    try {
+      const resolved = await resolveIosBuildNumber(
+        projectDir,
+        appConfig.ios?.buildNumber,
+        opts.buildNumber !== undefined ? Number(opts.buildNumber) : undefined
+      );
+      iosBuildNumber = resolved.buildNumber;
+      iosBuildNumberOverride = resolved.source === "override";
+      if (resolved.ignoredAppValue) {
+        logger.warn(`ios.buildNumber "${resolved.ignoredAppValue}" in ${appConfig.source} is not an integer: ignored, rn-shipyard numbers iOS builds itself`);
+      }
+      if (hasAscApiKey(process.env)) {
+        logger.info(
+          `iOS build number ${resolved.buildNumber} (${resolved.source === "app.json" ? appConfig.source : resolved.source}, last used ${resolved.lastUsed}); the build lane continues after the latest TestFlight build if that is higher`
+        );
+      } else {
+        logger.info(
+          `iOS build number ${resolved.buildNumber} (${resolved.source === "app.json" ? appConfig.source : resolved.source}, last used ${resolved.lastUsed}). Set EXPO_ASC_KEY_ID, EXPO_ASC_ISSUER_ID and EXPO_ASC_API_KEY_PATH (or eas.json submit ascApi*) to continue from the latest TestFlight build number`
+        );
+      }
+    } catch (err) {
+      if (err instanceof ShipyardError) {
+        if (opts.json) printJson(err.toJSON());
+        else {
+          logger.error(err.message);
+          logger.info(`Fix: ${err.fix}`);
+        }
+        process.exit(1);
+        return;
       }
       throw err;
     }
@@ -213,7 +268,7 @@ export default async function buildCmd(opts: BuildOptions): Promise<void> {
         status: "error",
         version: appConfig.version,
         ...(platform === "ios"
-          ? { buildNumber: appConfig.ios?.buildNumber }
+          ? { buildNumber: iosBuildNumber !== undefined ? String(iosBuildNumber) : undefined }
           : { versionCode: androidVersionCode }),
         durationSeconds: 0,
         error: `${err.message}. ${err.fix}`,
@@ -252,7 +307,7 @@ export default async function buildCmd(opts: BuildOptions): Promise<void> {
           status: "error",
           version: appConfig.version,
           ...(platform === "ios"
-            ? { buildNumber: appConfig.ios?.buildNumber }
+            ? { buildNumber: iosBuildNumber !== undefined ? String(iosBuildNumber) : undefined }
             : { versionCode: androidVersionCode }),
           durationSeconds: 0,
           error: `${err.message}. ${err.fix}`,
@@ -336,7 +391,7 @@ export default async function buildCmd(opts: BuildOptions): Promise<void> {
           status: "error",
           version: appConfig.version,
           ...(platform === "ios"
-            ? { buildNumber: appConfig.ios?.buildNumber }
+            ? { buildNumber: iosBuildNumber !== undefined ? String(iosBuildNumber) : undefined }
             : { versionCode: androidVersionCode }),
           durationSeconds: 0,
           error: `${err.message}. ${err.fix}`,
@@ -402,7 +457,8 @@ export default async function buildCmd(opts: BuildOptions): Promise<void> {
   if (doIos && !results.ios) {
     logger.info("Building iOS...");
     const iosConfig = config.platforms.ios!;
-    const outputName = `${safeFileStem(appConfig.name)}-${safeFileStem(appConfig.version)}-${safeFileStem(String(appConfig.ios?.buildNumber ?? "0"))}.ipa`;
+    // the lane may raise the build number above TestFlight's latest: it fills in the token
+    const outputName = `${safeFileStem(appConfig.name)}-${safeFileStem(appConfig.version)}-${BUILD_NUMBER_TOKEN}.ipa`;
 
     try {
       const iosBuildResult = await buildIos({
@@ -411,15 +467,21 @@ export default async function buildCmd(opts: BuildOptions): Promise<void> {
         appName: appConfig.name,
         outputName,
         projectDir,
+        buildNumber: iosBuildNumber!,
+        buildNumberOverride: iosBuildNumberOverride,
+        restoreNativeFiles: prebuild.ios?.action === "skipped_tracked",
+        warn: (m) => logger.warn(m),
+        info: (m) => logger.info(m),
         json: opts.json,
         interactive,
         profileEnv,
       });
+      const usedIosBuildNumber = iosBuildNumberFrom(iosBuildNumber, iosBuildResult.buildNumber);
 
       results.ios = {
         status: iosBuildResult.status,
         version: appConfig.version,
-        buildNumber: appConfig.ios?.buildNumber,
+        buildNumber: usedIosBuildNumber,
         artifactPath: iosBuildResult.artifactPath,
         durationSeconds: iosBuildResult.durationSeconds,
         error: iosBuildResult.error ?? null,
@@ -427,7 +489,10 @@ export default async function buildCmd(opts: BuildOptions): Promise<void> {
       };
 
       if (iosBuildResult.status === "success") {
-        logger.success(`iOS build succeeded: ${iosBuildResult.artifactPath}`);
+        if (iosBuildResult.testflightLatest !== undefined && iosBuildResult.buildNumber !== iosBuildNumber) {
+          logger.info(`iOS build number ${iosBuildResult.buildNumber}: the latest TestFlight build is ${iosBuildResult.testflightLatest}`);
+        }
+        logger.success(`iOS build succeeded: ${iosBuildResult.artifactPath} (build ${usedIosBuildNumber})`);
       } else {
         logger.error(`iOS build failed${iosBuildResult.errorCode ? ` [${iosBuildResult.errorCode}]` : ""}: ${iosBuildResult.error}`);
       }
@@ -435,7 +500,7 @@ export default async function buildCmd(opts: BuildOptions): Promise<void> {
       results.ios = {
         status: "error",
         version: appConfig.version,
-        buildNumber: appConfig.ios?.buildNumber,
+        buildNumber: iosBuildNumber !== undefined ? String(iosBuildNumber) : undefined,
         durationSeconds: 0,
         error: err instanceof Error ? err.message : String(err),
       };

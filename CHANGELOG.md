@@ -4,6 +4,37 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- iOS build lane resolved the Xcode project against `fastlane/` (fastlane runs lane bodies there), so every build failed with "Xcode project not found". Paths are now absolute and resolved in a separate lane `shipyard_ios_resolve`, covered by a test against real fastlane.
+- The iOS build number is read from the lane's own marker line (the first one), so later build output cannot spoof it.
+- An empty `MATCH_PASSWORD` is removed from every child process environment (Ruby treated it as a passphrase instead of using the keychain one).
+- `init --from-eas` validates the existing `.shipyard/config.json` before starting the eas-cli download.
+- A tracked `ios/` file you edit during a build is saved to `.shipyard/backup/` before it is restored.
+- Known limitations: app extensions are not signed or mapped by the build lane yet; without an App Store Connect key the iOS counter starts at `expo.ios.buildNumber` or 1 (EAS migrants: pass a key or `--build-number`); concurrent builds can pick the same number; signing also applies to the Debug configuration (harmless).
+
+### Added
+- `doctor` warns (never fails, never deletes) when EAS's plaintext `credentials.json` / `credentials/` are still on disk after a successful build, with the exact `rm` command and whether they are git-ignored or tracked.
+- The release workflow waits until npm serves the new tarball and `npm view` (every 15 s, up to 10 min) before finishing.
+- iOS build-number counter in `.shipyard/version-code.json` (`ios.lastUsed`), never reused. With an App Store Connect API key (`EXPO_ASC_*` or `eas.json` `submit.<profile>.ios.ascApi*`) the build lane reads the latest TestFlight build number and uses `max(local, latest + 1)`, like EAS remote versioning; without a key it uses the local counter and prints one hint. The number is set as `CFBundleVersion` in the generated `Info.plist` (never `app.json`) and recorded in history. New `build --build-number <n>` override; new error codes `INVALID_BUILD_NUMBER`, `BUILD_NUMBER_REUSED`, `FASTFILE_OUTDATED` (a Fastfile from an older rn-shipyard: run `rn-shipyard init` again).
+- Match password in the macOS keychain: fastlane match reads its passphrase from `MATCH_PASSWORD`, else from the keychain item `match_<git url>`. In a terminal `init` offers to save it there (`security add-internet-password ... -w`, `security` asks for the password itself; it is never in argv). `init`, the build pre-flight and `doctor` accept "found in the macOS keychain" (exit code of `security find-internet-password` only, the password is never read). CI keeps using `MATCH_PASSWORD`.
+- `init` checks a configured App Store Connect API key with one read-only call (`GET /v1/apps?filter[bundleId]=...`, ES256 JWT built with `node:crypto`, 15 s timeout). New error code `ASC_KEY_INVALID` (401, unreadable `.p8`). A role that is too low (403: submit needs App Manager or Admin), a missing app record or a network error only warns, since building does not need the key. Nothing about the key is logged.
+- `init --from-eas` without a `credentials.json`: in a terminal it prints every `eas-cli` question with the right answer (including "Do you want to log in to your Apple account?": n, the download only reads Expo's servers) and offers to run `npx eas-cli credentials -p <platform>` for you, then continues. Non-interactive runs keep `EAS_CREDENTIALS_NOT_FOUND` (exit 2) with the exact menu path in `fix` (eas-cli has no non-interactive download). Documented in the migrating-from-EAS guide.
+
+### Changed
+- `doctor` readiness is honest: a platform missing from `.shipyard/config.json` is "not set up" (next step `rn-shipyard init --platform <p>`), never "Ready", and a submit is ready only when a successful build in history still has its `.ipa`/`.aab` on disk (otherwise "no .ipa yet: run rn-shipyard build --platform ios"). In `--json`, `readiness.<action>` gains `state` and `note`. The pre-flight of `build --submit` is unchanged.
+- `doctor`: an unset `JAVA_HOME` passes when the `java` on PATH is JDK 17+ ("not set; Gradle uses java from PATH (25.0.1)"; Gradle's wrapper uses `$JAVA_HOME/bin/java` if set, else `java` from PATH). The `export` line stays in `--json` as an optional hint. It warns only when neither works.
+- `submit` (also `--dry-run`) with the requested platform not set up now says so and names `rn-shipyard init --platform <p>` in the error and its `fix`.
+- README status: Android and iOS are both verified end to end on a real Expo app.
+
+### Fixed
+- `history` printed colour codes (red table header) when piped or with `NO_COLOR` set; tables are now plain unless stdout is a colour terminal.
+- iOS archive no longer fails with `Signing for <App> requires a development team`. After Match (read-only) and before gym, the build lane applies manual signing to the app target only (Team ID from `.shipyard/config.json`, the provisioning profile and certificate name Match exports, the bundle id) and passes gym the matching `provisioningProfiles` export mapping. No `appleTeamId` in `app.json` needed. A git-tracked `ios/` has `project.pbxproj` and `Info.plist` restored byte for byte afterwards (also on Ctrl-C). App extensions are not signed yet.
+- The failure summary shows the real error: the xcodebuild/gym or Gradle `error:` line, else fastlane's `[!]` line, else the last 15 non-empty lines, ignoring the Gemfile tip and update notices. It applies to the terminal summary, `--json` `error` and history, for iOS and Android.
+- `init --platform ios` (or `android`) no longer deletes the other platform's setup. It merges into the existing `.shipyard/config.json` (the other block, `createdAt`, `outputDir`, `version-code.json` and `history.json` are left alone) and regenerates `fastlane/Fastfile`, `Appfile` and `Matchfile` for every configured platform. Re-running a platform replaces only its block and takes its prompt defaults from the existing config (an Android re-run keeps the configured keystore, alias and credentials file). An unreadable config stops with `INVALID_CONFIG` instead of being overwritten. Also with `--from-eas`.
+- `init` no longer prints "iOS: Match signing configured" when it skipped Match. The summary and `--json` (`setup.ios.status`: `configured`, `imported`, `skipped`, `failed`, plus `reason` and `nextStep`) say what actually happened. `--json` now always has `setup`, `nextSteps` and `files`.
+
 ## [0.2.1] - 2026-10-31
 
 ### Changed

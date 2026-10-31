@@ -7,7 +7,8 @@ export interface MatchSetupOptions {
   gitUrl: string;
   teamId: string;
   bundleId: string;
-  password: string;
+  /** Absent = fastlane reads the passphrase itself (macOS keychain item match_<git url>) */
+  password?: string;
   projectDir: string;
   stream: boolean;
   /** Whether match may prompt (Apple ID, 2FA, git credentials): it then runs in the foreground on the terminal. */

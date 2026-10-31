@@ -32,7 +32,8 @@ export type PreflightOutcome = { ok: true } | { ok: false; exitCode: number };
  * The match repo probe is a network round trip, and the iOS build's phase-1 clone fails fast on
  * the same problem anyway, so the pre-flight leaves it out.
  */
-const PREFLIGHT_EXCLUDE = ["match-repo", "ios-submit-auth"];
+const PREFLIGHT_EXCLUDE = ["match-repo", "ios-submit-auth", "eas-plaintext-credentials"];
+// ("eas-plaintext-credentials" is a doctor-only reminder.)
 // (and "ios-submit-auth": submit has its own, interactive-aware credentials gate and login step)
 
 /** Compact failure report: one ✗ line per failed check with its fix. */

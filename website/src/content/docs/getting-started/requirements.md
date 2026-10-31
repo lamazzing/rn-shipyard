@@ -24,19 +24,21 @@ All-pass groups collapse to one line. Only groups with something to say are expa
 
   Android
     ✓ JDK 17+  25.0.1
-    ! JAVA_HOME  not set; Gradle will use `java` from PATH
-        Fix:  export JAVA_HOME="/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home"   (add the line to ~/.zshrc)
-        Docs: https://github.com/lamazzing/rn-shipyard#prerequisites
-    ✓ Android SDK found  ~/Library/Android/sdk (ANDROID_HOME)
-    ✓ SDK build-tools and platform-tools  build-tools 37.0.0
+    ✓ JAVA_HOME  not set; Gradle uses java from PATH (25.0.1)
+    ✓ ANDROID_HOME points to the Android SDK  ~/Library/Android/sdk
+    ✓ SDK platform-tools and build-tools  build-tools 37.0.0
     ✓ keytool  available
     ✓ /bin/sh keeps env vars with dots  needed to pass signing passwords to Gradle
 
-  ✓ Project (5 checks passed)
+  Project
+    ✓ Expo project (package.json depends on expo)  expo ~54.0.0
+    ! No plaintext EAS credentials left over  a build has worked, but these still hold your signing keys/passwords in plaintext: credentials.json (git-ignored), credentials/ (git-ignored)
+        Fix:  Once your signing is safely in Match / ~/.config/rn-shipyard (rn-shipyard never deletes these): rm -r -- credentials.json credentials/
 
   ✓ Signing & submit (4 checks passed)
 
-  Ready:      iOS build, iOS submit, Android build, Android submit
+  Ready:      iOS build, Android build, Android submit
+  Not ready:  iOS submit (no .ipa yet: run `rn-shipyard build --platform ios`)
 
   Next step: Nothing blocks you (1 warning above). Run `rn-shipyard build`.
 ```
@@ -79,7 +81,7 @@ How to read it:
 - The pre-flight makes no network calls. It leaves out the Match repo reachability check (`doctor` does it) and the App Store Connect credentials check (`submit` checks credentials itself).
 - `init` leaves out the checks for what it creates: `.shipyard/config.json`, `eas.json` and the whole Signing & submit group.
 - `build` and `submit` accept `--skip-checks` to bypass it. `submit --dry-run` does not run it.
-- Without `MATCH_PASSWORD`, an interactive iOS build gets a warning; with `--non-interactive`, `--json` or `CI` set it is a blocking problem.
+- Without `MATCH_PASSWORD` and without a Match passphrase in the macOS keychain (`match_<git url>`), an interactive iOS build gets a warning; with `--non-interactive`, `--json` or `CI` set it is a blocking problem.
 - Android builds need a keystore password in `ANDROID_KEYSTORE_PASSWORD` or the credentials file.
 
 Check one platform only, or get JSON:
@@ -101,7 +103,7 @@ rn-shipyard doctor --json
 | System | Xcode command line tools | everything |
 | iOS | Xcode 15 or newer, selected with `xcode-select`, license accepted | iOS builds |
 | iOS | CocoaPods | iOS builds |
-| Android | JDK 17 or newer, and `JAVA_HOME` (a warning if unset) | Android builds |
+| Android | JDK 17 or newer. `JAVA_HOME` may be unset when `java` on PATH is JDK 17+ (Gradle uses `$JAVA_HOME/bin/java` if set, else `java` from PATH); warning only if neither works | Android builds |
 | Android | Android SDK (`ANDROID_HOME`, `ANDROID_SDK_ROOT`, `android/local.properties` or `~/Library/Android/sdk`) with build-tools and platform-tools | Android builds |
 | Android | `keytool` | Android builds, keystore generation |
 | Android | `/bin/sh` keeps variables with dots in their name | Gradle signing passwords |

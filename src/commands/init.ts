@@ -2,7 +2,7 @@ import { readFile, writeFile, access, readdir, stat } from "node:fs/promises";
 import { dirname, join, relative, isAbsolute, sep } from "node:path";
 import chalk from "chalk";
 import { parseEasConfig, parseAppConfig, profileEnvFrom, profileEnvWarnings, configFieldHint } from "../core/eas-parser.js";
-import { writeConfig, type ShipyardConfig } from "../core/config.js";
+import { writeConfig, readExistingConfig, type ShipyardConfig } from "../core/config.js";
 import { generateAll } from "../fastlane/generator.js";
 import { setupMatch } from "../platforms/ios/signing.js";
 import { resolvePath, toPortablePath, ensureShipyardGitignore } from "../core/paths.js";
@@ -16,11 +16,14 @@ import { safeUrl } from "../platforms/ios/match-repo.js";
 import { createPrompter, type Prompter } from "../utils/prompt.js";
 import { exec, registerStdinReleaser } from "../utils/shell.js";
 import { isInteractive } from "../utils/interactive.js";
-import { applyExpoEnvAliases } from "../utils/apple-env.js";
+import { applyExpoEnvAliases, applyEasSubmitIos } from "../utils/apple-env.js";
 import { runPreflight } from "./preflight.js";
 import { collectSecrets } from "../utils/secrets.js";
 import { readEasCredentials, type EasCredentials } from "../core/eas-credentials.js";
 import { importAndroidKeystore, type AndroidEasImport } from "../platforms/android/eas-import.js";
+import { hasMatchPasswordInKeychain, storeMatchPasswordInKeychain } from "../platforms/ios/match-keychain.js";
+import { checkAscApiKey, type AscKeyCheck } from "../platforms/ios/asc-check.js";
+import { easDownloadGuide, runEasCredentialsDownload, type EasPlatform } from "../core/eas-download.js";
 import { importIosCredentials, type IosEasImport, type IosEasImportOptions } from "../platforms/ios/eas-import.js";
 
 export interface InitOptions {
@@ -42,6 +45,15 @@ interface AndroidCredentialsFile {
   keystorePassword?: string;
   keyAlias?: string;
   keyPassword?: string;
+}
+
+/** What init actually did for iOS signing: the summary and --json must say it, not assume it. */
+interface IosSetupOutcome {
+  status: "configured" | "imported" | "skipped" | "failed";
+  passwordSource?: "env" | "keychain" | "prompt";
+  reason?: string;
+  nextStep?: string;
+  ascKey?: AscKeyCheck;
 }
 
 const nonEmpty = (v: unknown): v is string => typeof v === "string" && v.trim() !== "";
@@ -147,6 +159,17 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
   let doIos = opts.platform === "all" || opts.platform === "ios";
   let doAndroid = opts.platform === "all" || opts.platform === "android";
 
+  // Init for one platform MERGES into the existing config: the other platform's block is kept as is.
+  // An unreadable config is an error here, never silently replaced.
+  let existingConfig: ShipyardConfig | undefined;
+  try {
+    existingConfig = await readExistingConfig(projectDir);
+  } catch (err) {
+    if (err instanceof ShipyardError) return fail(err, 1);
+    throw err;
+  }
+  // (read before the --from-eas download flow, so a broken config fails before any side effect)
+
   // --- --from-eas: read credentials.json first, so a missing file fails before any side effect ---
   let easCreds: EasCredentials | undefined;
   if (opts.fromEas !== undefined && opts.fromEas !== false) {
@@ -164,8 +187,29 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
         1
       );
     }
+    const fromEasPath = typeof opts.fromEas === "string" ? opts.fromEas : undefined;
     try {
-      easCreds = await readEasCredentials(projectDir, typeof opts.fromEas === "string" ? opts.fromEas : undefined);
+      try {
+        easCreds = await readEasCredentials(projectDir, fromEasPath);
+      } catch (err) {
+        // Missing file on a terminal: offer to run eas-cli's credentials menu (no non-interactive download exists)
+        const defaultFile = !fromEasPath || resolvePath(projectDir, fromEasPath) === join(projectDir, "credentials.json");
+        if (!(err instanceof ShipyardError) || err.code !== "EAS_CREDENTIALS_NOT_FOUND" || !interactive || !defaultFile) throw err;
+        const wanted: EasPlatform[] = [...(doIos ? (["ios"] as const) : []), ...(doAndroid ? (["android"] as const) : [])];
+        logger.warn("No credentials.json yet. eas-cli can download your signing credentials from Expo into it.");
+        for (const line of easDownloadGuide(wanted)) console.log(`  ${line}`);
+        const answer = await getPrompter().ask(`Run \`npx eas-cli credentials\` now for ${wanted.join(" and ")}? (Y/n)`, "y");
+        if (/^n/i.test(answer.trim())) throw err;
+        const done = await runEasCredentialsDownload(projectDir, wanted);
+        if (done.length < wanted.length) {
+          throw new ShipyardError(
+            "EAS_CREDENTIALS_NOT_FOUND",
+            `eas-cli did not finish for ${wanted.filter((w) => !done.includes(w)).join(" and ")}`,
+            err.fix
+          );
+        }
+        easCreds = await readEasCredentials(projectDir, fromEasPath);
+      }
     } catch (err) {
       if (err instanceof ShipyardError) return fail(err, err.code === "EAS_CREDENTIALS_NOT_FOUND" ? 2 : 1);
       throw err;
@@ -365,6 +409,18 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
     }
   }
 
+  // Re-running init for Android without keystore flags keeps the keystore already in the config
+  // (never a new key, and its alias/credentials file survive)
+  let keptAlias: string | undefined;
+  const keptAndroid = existingConfig?.platforms.android;
+  if (doAndroid && keptAndroid && !existingKeystore && !credentialsPath && (await fileExists(keptAndroid.keystorePath))) {
+    existingKeystore = keptAndroid.keystorePath;
+    keptAlias = keptAndroid.keystoreAlias;
+    if (keptAndroid.credentialsPath && (await fileExists(keptAndroid.credentialsPath))) {
+      credentialsPath = keptAndroid.credentialsPath;
+    }
+  }
+
   // A keystore or credentials file inside ios/ or android/ would be deleted by `expo prebuild --clean`
   if (doAndroid) {
     for (const [label, path] of [
@@ -380,12 +436,24 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
     }
   }
 
-  const config: ShipyardConfig = {
-    version: "1.0.0",
-    createdAt: new Date().toISOString(),
-    platforms: {},
-    outputDir: "./output",
-  };
+  // The existing config is the base: version, createdAt, outputDir and the platform that is not
+  // being set up stay as they are. Only the selected platform's block is replaced below.
+  const config: ShipyardConfig = existingConfig
+    ? { ...existingConfig, platforms: { ...existingConfig.platforms } }
+    : {
+        version: "1.0.0",
+        createdAt: new Date().toISOString(),
+        platforms: {},
+        outputDir: "./output",
+      };
+  const previousIos = existingConfig?.platforms.ios;
+  const previousAndroid = existingConfig?.platforms.android;
+  const preserved = [
+    !doIos && config.platforms.ios ? "ios" : undefined,
+    !doAndroid && config.platforms.android ? "android" : undefined,
+  ].filter((x): x is string => !!x);
+  if (preserved.length > 0) logger.info(`Keeping the existing ${preserved.join(" and ")} setup from .shipyard/config.json`);
+  let iosOutcome: IosSetupOutcome | undefined;
 
   // --- iOS Setup ---
   let iosImportPlan: Omit<IosEasImportOptions, "projectDir" | "interactive" | "stream"> | undefined;
@@ -393,9 +461,9 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
     logger.info("Setting up iOS...");
 
     const easIos = easConfig?.submit?.production?.ios;
-    const defaultTeamId = easIos?.appleTeamId ?? process.env.APPLE_TEAM_ID ?? "";
-    const defaultMatchUrl = process.env.MATCH_GIT_URL ?? "";
-    const defaultBundleId = appConfig.ios?.bundleIdentifier ?? "";
+    const defaultTeamId = easIos?.appleTeamId ?? process.env.APPLE_TEAM_ID ?? previousIos?.teamId ?? "";
+    const defaultMatchUrl = process.env.MATCH_GIT_URL ?? previousIos?.matchGitUrl ?? "";
+    const defaultBundleId = appConfig.ios?.bundleIdentifier ?? previousIos?.bundleId ?? "";
     if (!defaultBundleId && interactive) {
       logger.warn(configFieldHint(appConfig.source, "ios.bundleIdentifier", "com.example.app"));
     }
@@ -444,12 +512,50 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
       bundleId,
     };
 
-    // Run Match setup
-    const matchPassword = process.env.MATCH_PASSWORD;
+    // The App Store Connect API key (submit): a wrong role would otherwise fail late, at the first submit
+    const iosEasSubmit = easIos as Record<string, unknown> | undefined;
+    const ascEnv = applyEasSubmitIos(iosEasSubmit, projectDir, { ...process.env });
+    const ascKey = bundleId
+      ? await checkAscApiKey({ env: ascEnv, bundleId }).catch((err: unknown) => {
+          if (err instanceof ShipyardError) return fail(err, 1);
+          throw err;
+        })
+      : undefined;
+    if (ascKey) {
+      if (ascKey.status === "ok") logger.success(ascKey.detail);
+      else if (ascKey.status === "skipped") logger.info(`${ascKey.detail}: skipped the key check (only submit needs one)`);
+      else logger.warn(ascKey.detail);
+    }
+
+    // Where the Match passphrase comes from: the environment (CI), else the macOS keychain item
+    // fastlane match itself reads ("match_<git url>"), else (interactive) offer to save it there.
+    let passwordSource: IosSetupOutcome["passwordSource"];
+    let password = process.env.MATCH_PASSWORD || undefined;
+    if (password) passwordSource = "env";
+    else if (await hasMatchPasswordInKeychain(matchGitUrl)) {
+      passwordSource = "keychain";
+      logger.info("Using the Match passphrase from the macOS keychain");
+    } else if (interactive) {
+      const p = getPrompter();
+      const answer = await p.ask(
+        "Save the Match password in the macOS keychain? fastlane match reads it from there, so MATCH_PASSWORD is not needed in every shell (Y/n)",
+        "y"
+      );
+      if (!/^n/i.test(answer.trim())) {
+        logger.info("macOS will ask for the password twice. Use the passphrase of your Match repo (choose a new one if the repo is empty).");
+        const stored = await storeMatchPasswordInKeychain(matchGitUrl);
+        if (stored.success) {
+          passwordSource = "keychain";
+          logger.success("Saved the Match password in the macOS keychain");
+        } else {
+          logger.warn(`Could not save the Match password in the keychain: ${stored.error ?? "unknown error"}`);
+        }
+      }
+    }
+
     if (easCreds?.ios) {
       // --from-eas: the import into the Match repo runs after the Fastfile (which has its lane) is written
-      let password = matchPassword ?? "";
-      if (!password && interactive) {
+      if (!passwordSource && interactive) {
         const p = getPrompter();
         for (let attempt = 0; attempt < 3 && !password; attempt++) {
           const first = await p.askSecret("Match password (encrypts the certificates in the Match repo)");
@@ -457,39 +563,57 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
           if ((await p.askSecret("Repeat Match password")) === first) password = first;
           else logger.warn("Passwords do not match");
         }
+        if (password) passwordSource = "prompt";
       }
-      if (!password) {
+      if (!passwordSource) {
         return fail(
           new ShipyardError(
             "MISSING_CONFIG_IOS",
-            "MATCH_PASSWORD is not set",
-            "Set MATCH_PASSWORD (the passphrase that encrypts your Match repo; choose one if the repo is new) or run without --non-interactive to be asked"
+            "MATCH_PASSWORD is not set and no Match passphrase is in the macOS keychain",
+            "Set MATCH_PASSWORD (the passphrase that encrypts your Match repo; choose one if the repo is new) or run without --non-interactive to be asked and save it in the keychain"
           ),
           2
         );
       }
       iosImportPlan = { targets: easCreds.ios, gitUrl: matchGitUrl, teamId, bundleId, matchPassword: password };
-    } else if (matchPassword) {
+      iosOutcome = { status: "imported", passwordSource, ascKey };
+    } else if (passwordSource) {
       logger.info("Running Fastlane Match to set up code signing...");
       const matchResult = await setupMatch({
         gitUrl: matchGitUrl,
         teamId,
         bundleId,
-        password: matchPassword,
+        password,
         projectDir,
         stream: !opts.json,
         interactive,
       });
       if (matchResult.success) {
         logger.success("iOS code signing configured");
+        iosOutcome = { status: "configured", passwordSource, ascKey };
       } else {
         logger.warn(`Match setup failed: ${matchResult.error}`);
-        logger.info("You can run 'fastlane match appstore' manually later");
+        logger.info("Fix the problem above and run 'rn-shipyard init --platform ios' again (or 'fastlane match appstore')");
+        iosOutcome = {
+          status: "failed",
+          passwordSource,
+          reason: String(matchResult.error ?? "Match setup failed").slice(0, 300),
+          nextStep: "Fix the Match error above, then run: rn-shipyard init --platform ios",
+          ascKey,
+        };
       }
     } else {
       logger.warn(
-        "MATCH_PASSWORD not set — skipping Match setup. Set it and run 'fastlane match appstore' manually"
+        "MATCH_PASSWORD not set (and no Match passphrase in the macOS keychain) — skipping Match setup. Set it and run 'rn-shipyard init --platform ios' again"
       );
+      iosOutcome = {
+        status: "skipped",
+        reason: "MATCH_PASSWORD is not set and no Match passphrase is in the macOS keychain",
+        nextStep: interactive
+          ? "Run rn-shipyard init --platform ios again and answer Y to save the Match password in the keychain (or export MATCH_PASSWORD=<passphrase>)"
+          : "export MATCH_PASSWORD=<the Match repo passphrase> and run: rn-shipyard init --platform ios --non-interactive (or run it in a terminal to save the password in the keychain)",
+        ascKey,
+      };
     }
   }
 
@@ -503,7 +627,7 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
     }
     const defaultKeystorePath = join(".shipyard", "android", "release.keystore");
     const easAndroid = easConfig?.submit?.production?.android;
-    const defaultServiceAccount = easAndroid?.serviceAccountKeyPath ?? "";
+    const defaultServiceAccount = easAndroid?.serviceAccountKeyPath ?? previousAndroid?.serviceAccountKeyPath ?? "";
 
     let keystorePath = defaultKeystorePath;
     let keystoreAlias = "release";
@@ -524,7 +648,10 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
         );
       }
       if (credentialsAlias) keystoreAlias = credentialsAlias;
-      else {
+      else if (keptAlias) {
+        keystoreAlias = keptAlias;
+        logger.info(`Keeping the Android keystore from .shipyard/config.json (alias ${keystoreAlias})`);
+      } else {
         logger.warn(
           `No --android-credentials: assuming key alias "${keystoreAlias}". Set ANDROID_KEYSTORE_PASSWORD and pass a credentials file with keyAlias if it differs`
         );
@@ -680,8 +807,9 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
     logger.success("Wrote .shipyard/.gitignore");
   }
 
-  // --- Next steps after an import ---
+  // --- Next steps ---
   const nextSteps: string[] = [];
+  if (iosOutcome?.nextStep) nextSteps.push(iosOutcome.nextStep);
   if (easCreds) {
     if (androidImport) {
       nextSteps.push(
@@ -701,13 +829,31 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
         `After that build works, delete the plaintext EAS files (they contain your signing passwords): ${rm} ${easEntries.map((e) => rmArg(e.display)).join(" ")}  (rn-shipyard never deletes them for you)`
       );
     }
+  } else if (!iosOutcome?.nextStep) {
+    nextSteps.push(`rn-shipyard build --platform ${opts.platform}`);
   }
+  const iosOpen = iosOutcome?.status === "skipped" || iosOutcome?.status === "failed";
 
   // --- Output summary ---
   if (opts.json) {
     printJson({
       success: true,
       config: portableForOutput(projectDir, config),
+      setup: {
+        ...(iosOutcome
+          ? {
+              ios: {
+                status: iosOutcome.status,
+                ...(iosOutcome.passwordSource ? { matchPassword: iosOutcome.passwordSource } : {}),
+                ...(iosOutcome.reason ? { reason: iosOutcome.reason } : {}),
+                ...(iosOutcome.nextStep ? { nextStep: iosOutcome.nextStep } : {}),
+                ...(iosOutcome.ascKey ? { ascKey: iosOutcome.ascKey.status } : {}),
+              },
+            }
+          : {}),
+        ...(doAndroid && config.platforms.android ? { android: { status: "ready" } } : {}),
+        ...(preserved.length > 0 ? { preserved } : {}),
+      },
       ...(easCreds
         ? {
             imported: {
@@ -739,9 +885,9 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
                 : {}),
             },
             plaintextFiles: easFiles,
-            nextSteps,
           }
         : {}),
+      nextSteps,
       ...(logger.warnings.length > 0 ? { warnings: logger.warnings } : {}),
       files: [
         ".shipyard/config.json",
@@ -753,21 +899,42 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
     });
   } else {
     console.log("");
-    console.log(chalk.bold("  Setup complete!"));
+    console.log(chalk.bold(iosOpen ? "  Setup written, with open items" : "  Setup complete!"));
     console.log("");
-    if (config.platforms.ios) {
-      console.log(`  ${chalk.green("✓")} iOS: Match signing configured`);
+    if (iosOutcome) {
+      if (iosOutcome.status === "configured") {
+        console.log(`  ${chalk.green("✓")} iOS: Match signing configured`);
+      } else if (iosOutcome.status === "imported") {
+        console.log(`  ${chalk.green("✓")} iOS: EAS certificate and profile imported into the Match repo`);
+      } else if (iosOutcome.status === "skipped") {
+        console.log(`  ${chalk.yellow("!")} iOS: config and fastlane files written, Match signing NOT set up (${iosOutcome.reason})`);
+      } else {
+        console.log(`  ${chalk.red("✗")} iOS: config and fastlane files written, Match setup FAILED (see the error above)`);
+      }
+    } else if (config.platforms.ios) {
+      console.log(chalk.dim(`  - iOS: unchanged (kept from .shipyard/config.json)`));
     }
-    if (config.platforms.android) {
+    if (doAndroid && config.platforms.android) {
       console.log(`  ${chalk.green("✓")} Android: Keystore ready`);
+    } else if (config.platforms.android) {
+      console.log(chalk.dim(`  - Android: unchanged (kept from .shipyard/config.json)`));
     }
     console.log("");
-    if (easCreds) {
+    if (easCreds || iosOpen) {
       console.log(chalk.bold("  Next steps"));
       nextSteps.forEach((step, i) => console.log(`  ${i + 1}. ${step}`));
     } else {
-      console.log(chalk.dim(`  Next: rn-shipyard build --platform ${opts.platform}`));
+      console.log(chalk.dim(`  Next: ${nextSteps[0]}`));
     }
+  }
+}
+
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
   }
 }
 

@@ -41,18 +41,21 @@ npx rn-shipyard submit --platform all                     # 4. upload to App Sto
 
   Android
     ✓ JDK 17+  25.0.1
-    ! JAVA_HOME  not set; Gradle will use `java` from PATH
-        Fix:  export JAVA_HOME="/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home"   (add the line to ~/.zshrc)
+    ✓ JAVA_HOME  not set; Gradle uses java from PATH (25.0.1)
     ✓ ANDROID_HOME points to the Android SDK  ~/Library/Android/sdk
     ✓ SDK platform-tools and build-tools  build-tools 37.0.0
     ✓ keytool  available
     ✓ /bin/sh keeps env vars with dots  needed to pass signing passwords to Gradle
 
-  ✓ Project (5 checks passed)
+  Project
+    ✓ Expo project (package.json depends on expo)  expo ~54.0.0
+    ! No plaintext EAS credentials left over  a build has worked, but these still hold your signing keys/passwords in plaintext: credentials.json (git-ignored), credentials/ (git-ignored)
+        Fix:  Once your signing is safely in Match / ~/.config/rn-shipyard (rn-shipyard never deletes these): rm -r -- credentials.json credentials/
 
   ✓ Signing & submit (4 checks passed)
 
-  Ready:      iOS build, iOS submit, Android build, Android submit
+  Ready:      iOS build, Android build, Android submit
+  Not ready:  iOS submit (no .ipa yet: run `rn-shipyard build --platform ios`)
 
   Next step: Nothing blocks you (1 warning above). Run `rn-shipyard build`.
 ```
@@ -88,7 +91,7 @@ npx rn-shipyard submit --platform all                     # 4. upload to App Sto
 
 If you need cloud builds, iOS builds without a Mac, or OTA updates, use EAS. If you have a Mac and want to skip the wait, use this.
 
-> **Status (0.1.0):** the Android flow (`init`, signed `build`) is verified end to end on real Expo apps. The iOS flow (Match signing, build, App Store Connect submit) is covered by tests but has seen little real-world use yet. If something breaks on your setup, please [open an issue](https://github.com/lamazzing/rn-shipyard/issues).
+> **Status:** Android and iOS are both verified end to end on a real Expo app (iOS: Expo → Match → TestFlight upload with an App Store Connect API key, using credentials imported with `init --from-eas`). It is still a new project, so if something breaks on your setup, please [open an issue](https://github.com/lamazzing/rn-shipyard/issues).
 
 ## Prerequisites
 
@@ -152,7 +155,7 @@ rn-shipyard init --platform android \
 
 `--android-last-version-code` seeds the counter so rn-shipyard never reuses a code you already shipped.
 
-**Import your EAS signing credentials in one step** (no new iOS certificate, same Android upload key). Download them with `npx eas-cli credentials` (pick the platform, then "credentials.json: Upload/Download credentials between EAS servers and your local json", then "Download credentials from EAS to credentials.json"), then:
+**Import your EAS signing credentials in one step** (no new iOS certificate, same Android upload key). In a terminal, `init --from-eas` offers to run `npx eas-cli credentials -p <platform>` for you and prints the answers first (there is no non-interactive download in eas-cli): answer **n** to "Do you want to log in to your Apple account?" (the download only reads Expo's servers), choose "credentials.json: Upload/Download credentials between EAS servers and your local json", then "Download credentials from EAS to credentials.json", then Go back and Exit. Or do it yourself first, then:
 
 ```bash
 rn-shipyard init --from-eas          # reads ./credentials.json; or --from-eas path/to/credentials.json
@@ -174,7 +177,7 @@ Every command accepts `--json` and `--non-interactive`.
 
 A requirements check that tells you what is missing and what to type to fix it. Checks run in parallel with timeouts, so it never hangs. Groups: **System**, **iOS**, **Android**, **Project**, and **Signing & submit** for the platforms you configured. It only reports whether a secret is set, never its value.
 
-Each result is `✓` (fine), `!` (warning, will not stop a build) or `✗` (blocks the build or submit listed under "Not ready"). The summary is per action: iOS build, iOS submit, Android build, Android submit. Exit `0` when nothing failed, `2` when only project setup is missing (run `init`), `1` otherwise.
+Each result is `✓` (fine), `!` (warning, will not stop a build) or `✗` (blocks the build or submit listed under "Not ready"). A platform that is not in `.shipyard/config.json` is "not set up" (with `rn-shipyard init --platform <p>` as the next step), and a submit counts as ready only when a successful build in history still has its `.ipa`/`.aab` on disk; otherwise it says `no .ipa yet: run rn-shipyard build --platform ios`. `doctor` also warns (never fails, never deletes) when EAS's plaintext `credentials.json` / `credentials/` are still on disk after a successful build, with the exact `rm` command and whether they are git-ignored. JAVA_HOME may be unset when the `java` on PATH is JDK 17+: Gradle's wrapper uses `$JAVA_HOME/bin/java` if set and `java` from PATH otherwise. The summary is per action: iOS build, iOS submit, Android build, Android submit. Exit `0` when nothing failed, `2` when only project setup is missing (run `init`), `1` otherwise.
 
 ### `init`
 
@@ -187,7 +190,9 @@ Each result is `✓` (fine), `!` (warning, will not stop a build) or `✗` (bloc
 
 Interactive (readline prompts) in a terminal. With `--non-interactive`, `--json` or a non-TTY stdin it never prompts: values come from environment variables and your Expo config, and a missing value exits `2`. Password prompts never echo.
 
-- **iOS:** asks for bundle identifier, Apple Team ID and Match Git URL (defaults from your config, `APPLE_TEAM_ID`, `MATCH_GIT_URL`). With `MATCH_PASSWORD` set it runs `fastlane match appstore`; otherwise it tells you to run it later.
+- **One platform at a time is safe:** `init --platform ios` merges into an existing `.shipyard/config.json` (the Android block, `version-code.json` and `history.json` stay untouched) and regenerates `fastlane/` for every configured platform. Re-running it for the same platform replaces only that block; its defaults come from the existing config.
+- **iOS:** asks for bundle identifier, Apple Team ID and Match Git URL (defaults from your config, `APPLE_TEAM_ID`, `MATCH_GIT_URL`). The Match password comes from `MATCH_PASSWORD` (CI) or from the macOS keychain item fastlane match itself reads (`match_<git url>`); in a terminal `init` offers to save it there (macOS asks for it, it never touches the command line). It then runs `fastlane match appstore`. With neither, it skips Match and the summary and `--json` (`setup.ios.status: "skipped"`) say so, with the next step.
+- **App Store Connect key check:** when an API key is configured (`APP_STORE_CONNECT_API_KEY_*` / `EXPO_ASC_*` / `ascApiKey*` in `eas.json`), `init` makes one read-only call to App Store Connect (`GET /v1/apps?filter[bundleId]=...`) with a short-lived JWT. A wrong key fails with `ASC_KEY_INVALID` (401); a role that is too low (403, submit needs App Manager or Admin), a missing app record or no network is only a warning, since building does not need the key.
 - **Match URL:** it is committed in `.shipyard/config.json` and `fastlane/Matchfile`, so it must not contain credentials. `https://x-access-token:TOKEN@github.com/...` is rejected (`INVALID_MATCH_GIT_URL`). Use `git@github.com:org/certs.git`, or a plain `https://` URL plus `MATCH_GIT_BASIC_AUTHORIZATION`.
 - **Android:** generates `.shipyard/android/release.keystore` with `keytool`, or adopts the keystore you pass.
 - Writes `.shipyard/config.json`, `fastlane/Fastfile`, `Appfile` (and `Matchfile`), and appends keystore and artifact patterns to your `.gitignore`.
@@ -202,6 +207,7 @@ Error codes are listed in the [error reference](https://lamazzing.github.io/rn-s
 | `--profile <name>` | Build profile from `eas.json` (default `production`) |
 | `--submit` | Submit after a successful build |
 | `--version-code <n>` | Android versionCode, must be greater than the last used one |
+| `--build-number <n>` | iOS build number (`CFBundleVersion`), must be greater than the last used one |
 | `--skip-version-check` | Skip the "version looks unchanged" warning |
 | `--skip-checks` | Skip the `doctor` pre-flight |
 
@@ -220,6 +226,12 @@ iOS and Android build one after the other and independently: if iOS fails, Andro
 **Two phases, like EAS.** Anything that may prompt (cloning the Match repo, the Apple login) runs first on your real terminal. The build or upload itself then runs with no stdin, `CI=1` and redacted output, so a tool that wants to prompt fails immediately instead of hanging. With `--non-interactive`, `--json` or no TTY there is no first phase: the Match repo is cloned with prompts disabled and fails fast with `MATCH_REPO_AUTH_FAILED` if git needs one.
 
 **Android versionCode.** The code is the larger of `expo.android.versionCode` (1 if unset) and `lastUsed + 1`, where `lastUsed` comes from `.shipyard/version-code.json` and your build history. It is applied to the generated Gradle project, never written to `app.json`, and the counter advances only after a successful build. A committed `android/app/build.gradle` is never edited: its literal `versionCode` is read and used, and if it cannot be read the build fails rather than guess.
+
+**iOS signing.** After Match (read-only) and before the archive, the build lane applies manual signing to the **app target only** (not Pods, not app extensions) in the Xcode project: your Team ID from `.shipyard/config.json`, the provisioning profile and distribution certificate Match installed, and the bundle id; gym gets the matching `provisioningProfiles` export mapping. This fixes `Signing for <App> requires a development team` without putting `appleTeamId` in `app.json`. A generated `ios/` is simply rebuilt next time; a git-tracked `ios/` has `project.pbxproj` and `Info.plist` restored byte for byte afterwards, also on Ctrl-C. App extensions are not signed or mapped by the build lane yet (an app with extensions fails at signing). Manual signing is applied to Debug as well (harmless: generated `ios/` is rebuilt, tracked `ios/` is restored). If you edit a restored file during the build, your version is saved to `.shipyard/backup/` first. A `fastlane/Fastfile` from an older rn-shipyard fails with `FASTFILE_OUTDATED`: run `rn-shipyard init` again.
+
+**iOS build number.** The next number is the larger of `expo.ios.buildNumber` (integers only, 1 if unset) and `lastUsed + 1` (`.shipyard/version-code.json` `ios.lastUsed` and your build history). With an App Store Connect API key (`EXPO_ASC_KEY_ID`, `EXPO_ASC_ISSUER_ID`, `EXPO_ASC_API_KEY_PATH`, or `submit.<profile>.ios.ascApi*` in `eas.json`) the lane first reads the latest TestFlight build number and uses `max(local, latest + 1)`, like EAS remote versioning. Without a key it uses the local counter and prints one hint; it then starts at `expo.ios.buildNumber` or 1, so EAS migrants should pass a key or `--build-number` above TestFlight's latest. Concurrent builds can pick the same number. The number is written to the generated app's `Info.plist` (`CFBundleVersion`), never to `app.json`, and the counter advances only after a successful build. Your marketing version is never touched.
+
+**Failure summary.** The error shown (and stored in `--json` and history) is the real one: the xcodebuild or Gradle `error:` line, else fastlane's `[!]` line, else the last 15 lines. The Gemfile tip and update notices are ignored.
 
 Exit `0` all platforms succeeded, `1` any failed, `2` not initialized.
 
@@ -251,7 +263,7 @@ More: [App Store Connect](https://lamazzing.github.io/rn-shipyard/guides/submit-
 | `-p, --platform <ios\|android>` | Filter by platform |
 | `-l, --limit <n>` | Entries to show (default `10`) |
 
-Shows builds and submits from `.shipyard/history.json` as a table.
+Shows builds and submits from `.shipyard/history.json` as a table. The table is plain text (no colour codes) when stdout is not a terminal or `NO_COLOR` is set.
 
 ### Global flags
 
@@ -269,7 +281,7 @@ Shows builds and submits from `.shipyard/history.json` as a table.
 rn-shipyard uses Match with type `appstore`. You need a private Git repo to hold the encrypted certificates and profiles.
 
 1. Create the private repo and export its URL: `export MATCH_GIT_URL=git@github.com:you/certs.git`.
-2. Choose an encryption password: `export MATCH_PASSWORD=...` and `export APPLE_TEAM_ID=...`.
+2. Choose an encryption password and `export APPLE_TEAM_ID=...`. Locally, `init` offers to save the password in the macOS keychain (fastlane match reads it there, so no `MATCH_PASSWORD` in every shell); in CI export `MATCH_PASSWORD=...`.
 3. Run `rn-shipyard init --platform ios`. It runs `fastlane match appstore` and writes the Matchfile. In a terminal, Match runs in the foreground, so Apple ID password, 2FA and git/ssh prompts work normally.
 4. For `submit`, provide App Store Connect credentials, see below.
 
@@ -317,7 +329,7 @@ More: [Android credentials](https://lamazzing.github.io/rn-shipyard/guides/andro
 
 | Variable | Used for |
 |---|---|
-| `MATCH_PASSWORD`, `MATCH_GIT_URL`, `APPLE_TEAM_ID` | iOS signing (`init`) |
+| `MATCH_PASSWORD`, `MATCH_GIT_URL`, `APPLE_TEAM_ID` | iOS signing (`init`). `MATCH_PASSWORD` is optional locally: the macOS keychain item `match_<git url>` is used when it is unset |
 | `EXPO_ASC_KEY_ID`, `EXPO_ASC_ISSUER_ID`, `EXPO_ASC_API_KEY_PATH` | iOS submit (API key), EAS names; alias of the next row |
 | `APP_STORE_CONNECT_API_KEY_KEY_ID`, `_ISSUER_ID`, `_KEY` or `_KEY_FILEPATH` | iOS submit (API key), Fastlane names |
 | `EXPO_APPLE_ID`, `EXPO_APPLE_PASSWORD`, `EXPO_APPLE_APP_SPECIFIC_PASSWORD`, `EXPO_APPLE_TEAM_ID` | iOS submit / signing (Apple ID), EAS names; aliases of `FASTLANE_USER`, `FASTLANE_PASSWORD`, `FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD`, `FASTLANE_TEAM_ID` |
@@ -325,6 +337,7 @@ More: [Android credentials](https://lamazzing.github.io/rn-shipyard/guides/andro
 | `GIT_SSH_COMMAND` | Base ssh command for the non-interactive Match clone |
 | `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_PASSWORD` | Android signing; override the credentials file |
 | `SUPPLY_JSON_KEY` | Path to the Google Play service-account JSON (overrides `eas.json`) |
+| `NO_COLOR`, `FORCE_COLOR` | Turn colour off / on. Output is plain when stdout is not a terminal |
 
 rn-shipyard does not load `.env` files itself. Export the variables in your shell (for example `set -a; source .env; set +a`).
 
@@ -340,7 +353,7 @@ What to commit:
 
 | Path | Commit? |
 |---|---|
-| `.shipyard/config.json`, `.shipyard/.gitignore`, `.shipyard/version-code.json` | Yes |
+| `.shipyard/config.json`, `.shipyard/.gitignore`, `.shipyard/version-code.json` (Android and iOS counters) | Yes |
 | `fastlane/Fastfile`, `Appfile`, `Matchfile` | Yes |
 | `.shipyard/history.json`, `output/` (`.ipa`, `.aab`) | No (ignored) |
 | `.shipyard/android/*.keystore`, `*.jks` | No, never (ignored) |
@@ -383,8 +396,10 @@ More: [JSON and exit codes](https://lamazzing.github.io/rn-shipyard/reference/js
 
 - **`doctor` fails on Ruby:** `brew install fastlane`. It brings its own Ruby and the system Ruby is then ignored.
 - **`Project not initialized` (exit 2):** run `rn-shipyard init` in the project root.
-- **Match setup skipped:** set `MATCH_PASSWORD` and re-run `init --platform ios`, or run `fastlane match appstore` yourself.
+- **Match setup skipped:** the summary says so. Set `MATCH_PASSWORD` (or run `init` in a terminal and save the password in the keychain) and re-run `init --platform ios`; it keeps your Android setup.
 - **`VERSION_CODE_REUSED`:** pass a `--version-code` greater than the reported value, or omit the flag.
+- **`BUILD_NUMBER_REUSED`:** pass a `--build-number` greater than the reported value, or omit the flag.
+- **`FASTFILE_OUTDATED`:** your `fastlane/Fastfile` came from an older rn-shipyard (no iOS signing step). Run `rn-shipyard init` again.
 - **`KEYSTORE_NOT_FOUND` / `CREDENTIALS_NOT_READABLE`:** check `keystorePath` and `credentialsPath` in `.shipyard/config.json`.
 - **Android submit skipped:** no service account configured. Set `SUPPLY_JSON_KEY` or `submit.<profile>.android.serviceAccountKeyPath` in `eas.json`.
 - **`MISSING_CONFIG_IOS_CREDENTIALS` (exit 2):** set an App Store Connect API key or an Apple ID plus password, or run `submit` in a terminal and log in when asked. See [iOS credentials for submit](#ios-credentials-for-submit).

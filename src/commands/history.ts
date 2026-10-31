@@ -2,7 +2,7 @@ import chalk from "chalk";
 import Table from "cli-table3";
 import { queryHistory, type HistoryEntry } from "../core/history.js";
 import { createLogger } from "../utils/logger.js";
-import { printJson } from "../core/output.js";
+import { printJson, tableStyle } from "../core/output.js";
 
 export interface HistoryOptions {
   platform?: string;
@@ -38,6 +38,7 @@ export default async function historyCmd(opts: HistoryOptions): Promise<void> {
   // Render as table — one row per platform per entry
   const table = new Table({
     head: ["Date", "Command", "Profile", "Platform", "Version", "Build#", "Status", "Duration"],
+    style: tableStyle(),
   });
 
   for (const entry of entries) {

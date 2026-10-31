@@ -21,6 +21,8 @@ import { iosChecks } from "./ios.js";
 import { androidChecks } from "./android.js";
 import { projectChecks } from "./project.js";
 import { signingChecks } from "./signing.js";
+import { easLeftoverChecks } from "./eas-leftovers.js";
+import { latestArtifact } from "./artifacts.js";
 
 export * from "./types.js";
 export { displayGitUrl } from "./signing.js";
@@ -31,6 +33,7 @@ export const ALL_CHECKS: CheckDef[] = [
   ...androidChecks,
   ...projectChecks,
   ...signingChecks,
+  ...easLeftoverChecks,
 ];
 
 const DEFAULT_TIMEOUT_MS = 20_000;
@@ -119,6 +122,40 @@ export function computeReadiness(checks: CheckResult[], actions: Action[]): Part
   return out;
 }
 
+/**
+ * Doctor-only refinement of readiness: a platform that is not configured is "not set up", and
+ * submit is ready only when a built artifact (.ipa/.aab) exists. Needs a readable config; without
+ * one the failed shipyard-config check already says it.
+ */
+async function refineReadiness(
+  projectDir: string,
+  ctx: CheckContext,
+  readiness: Partial<Record<Action, Readiness>>
+): Promise<void> {
+  const load = await ctx.config();
+  if (load.state !== "ok") return;
+  for (const action of Object.keys(readiness) as Action[]) {
+    const entry = readiness[action];
+    if (!entry) continue;
+    const platform: Platform = action.endsWith("ios") ? "ios" : "android";
+    if (load.config.platforms[platform]?.enabled !== true) {
+      readiness[action] = {
+        ready: false,
+        problems: 0,
+        state: "not-set-up",
+        note: `not set up: run \`rn-shipyard init --platform ${platform}\``,
+      };
+    } else if (action.startsWith("submit-") && entry.ready && !(await latestArtifact(projectDir, platform))) {
+      readiness[action] = {
+        ready: false,
+        problems: 0,
+        state: "no-artifact",
+        note: `no ${platform === "ios" ? ".ipa" : ".aab"} yet: run \`rn-shipyard build --platform ${platform}\``,
+      };
+    }
+  }
+}
+
 function listLabels(actions: Action[]): string {
   return actions.map((a) => ACTION_LABELS[a]).join(", ");
 }
@@ -128,7 +165,9 @@ export function describeReadiness(readiness: Partial<Record<Action, Readiness>>)
   const ready = entries.filter(([, r]) => r.ready).map(([a]) => a);
   const notReady = entries
     .filter(([, r]) => !r.ready)
-    .map(([a, r]) => `${ACTION_LABELS[a]} (${r.problems} problem${r.problems === 1 ? "" : "s"})`);
+    .map(([a, r]) =>
+      r.note ? `${ACTION_LABELS[a]} (${r.note})` : `${ACTION_LABELS[a]} (${r.problems} problem${r.problems === 1 ? "" : "s"})`
+    );
   return { ready: listLabels(ready), notReady: notReady.join(", ") };
 }
 
@@ -143,6 +182,10 @@ function buildNextStep(checks: CheckResult[], readiness: Partial<Record<Action, 
     return `Fix the ${n === 1 ? "item" : `${n} items`} marked ✗ above, then run \`rn-shipyard doctor\` again.`;
   }
   const buildable = ALL_PLATFORMS.filter((p) => readiness[`build-${p}`]?.ready);
+  const asked = ALL_PLATFORMS.filter((p) => readiness[`build-${p}`]);
+  if (buildable.length === 0 && asked.length > 0 && asked.every((p) => readiness[`build-${p}`]?.state === "not-set-up")) {
+    return `Run \`rn-shipyard init --platform ${asked[0]}\` to set up a platform.`;
+  }
   const cmd =
     buildable.length === 0
       ? "`rn-shipyard submit`"
@@ -190,6 +233,7 @@ export async function runRequirementChecks(input: RequirementsInput): Promise<Re
   const summary = { pass: 0, warn: 0, fail: 0, skip: 0 };
   for (const c of checks) summary[c.status]++;
   const readiness = computeReadiness(checks, actions);
+  if (input.assessReadiness) await refineReadiness(input.projectDir, ctx, readiness);
   const failed = checks.filter((c) => c.status === "fail");
   return {
     ok: failed.length === 0,
