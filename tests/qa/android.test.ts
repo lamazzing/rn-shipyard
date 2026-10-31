@@ -1,14 +1,14 @@
 import { describe, it, expect } from "vitest";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { androidSdk, androidSkipReason, cli, makeKeystore, makeNativeProject, parseJson, readJson, run } from "./support/env.js";
+import { androidSdk, androidSkipReason, requireOrSkip, cli, makeKeystore, makeNativeProject, parseJson, readJson, run } from "./support/env.js";
 
 /**
  * The whole Android path with real tools and no account: a throwaway keystore made by keytool,
  * `init --non-interactive`, a real `expo prebuild` + Gradle `bundleRelease` through fastlane, then
  * the .aab is checked with jarsigner and the history file.
  */
-const skip = androidSkipReason();
+const skip = requireOrSkip(androidSkipReason());
 if (skip) console.warn(`[qa] Android build scenario skipped: ${skip}`);
 
 describe.skipIf(!!skip)("android (keytool keystore -> init -> build -> signed .aab)", () => {

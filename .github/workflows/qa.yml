@@ -3,6 +3,10 @@ name: QA
 # End-to-end QA: runs the BUILT rn-shipyard CLI against throwaway Expo projects with real git,
 # fastlane, Gradle and CocoaPods (tests/qa, `npm run test:qa`). No Apple account, no secrets.
 # See CONTRIBUTING.md, "QA suite". release.yml can depend on this via `uses: ./.github/workflows/qa.yml`.
+#
+# Reusable: a caller needs to grant only `contents: read`. Failure issues are NOT opened here (a
+# called workflow sees the caller's event, e.g. a release tag push); .github/workflows/qa-report.yml
+# does that from a workflow_run of this workflow's own runs.
 
 on:
   pull_request:
@@ -28,6 +32,8 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 22
@@ -67,43 +73,3 @@ jobs:
             qa-results.json
           if-no-files-found: ignore
           retention-days: 14
-
-  # One open issue labelled qa-failure per breakage: later failures add a comment.
-  # Not for pull requests (the PR check is the signal) and not when called from another workflow.
-  report:
-    needs: qa
-    if: ${{ failure() && (github.event_name == 'schedule' || github.event_name == 'push') }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      issues: write
-      actions: read
-    steps:
-      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
-        with:
-          name: qa-logs
-          path: qa-logs
-        continue-on-error: true
-      - name: Open or update the qa-failure issue
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          EVENT: ${{ github.event_name }}
-          SHA: ${{ github.sha }}
-        run: |
-          failed="$(node -e '
-            try {
-              const r = JSON.parse(require("fs").readFileSync("qa-logs/qa-results.json", "utf8"));
-              const names = r.testResults.flatMap((f) => f.assertionResults.filter((a) => a.status === "failed").map((a) => a.fullName));
-              console.log(names.length ? names.map((n) => "- " + n).join("\n") : "- (no failed scenario in the report: the suite did not start, see the run log)");
-            } catch { console.log("- (no report: the suite did not get far enough, see the run log)"); }
-          ')"
-          body="QA run failed (${EVENT}, ${SHA:0:7}): ${RUN_URL}"$'\n\n'"Failing scenarios:"$'\n'"${failed}"
-          gh label create qa-failure --color B60205 --description "Automated QA suite failed" 2>/dev/null || true
-          number="$(gh issue list --label qa-failure --state open --limit 1 --json number --jq '.[0].number // empty')"
-          if [ -n "$number" ]; then
-            gh issue comment "$number" --body "$body"
-          else
-            gh issue create --label qa-failure --title "QA suite is failing" --body "$body"
-          fi

@@ -118,3 +118,12 @@ export function setJsonSinkForTests(sink: (text: string) => void): () => void {
     jsonSink = prev;
   };
 }
+
+/**
+ * https://no-color.org: a non-empty NO_COLOR turns colour off. chalk 5 does not read it (it only
+ * honours FORCE_COLOR, --no-color and the terminal), so set its level here, once, at startup.
+ * cli-table3 follows chalk.level (see tableStyle in core/output.ts); there is no other colour source.
+ */
+export function applyNoColor(chalkLike: { level: number }, env: NodeJS.ProcessEnv = process.env): void {
+  if (env.NO_COLOR) chalkLike.level = 0;
+}

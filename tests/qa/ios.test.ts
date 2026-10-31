@@ -2,14 +2,14 @@ import { describe, it, expect } from "vitest";
 import { existsSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { basename, join } from "node:path";
-import { APP_ID, cli, iosSkipReason, makeBareRepo, makeFastlaneShim, makeNativeProject, makeProject, parseJson, run } from "./support/env.js";
+import { APP_ID, cli, iosSkipReason, requireOrSkip, makeBareRepo, makeFastlaneShim, makeNativeProject, makeProject, parseJson, run } from "./support/env.js";
 import { initIos } from "./support/scenario.js";
 
 /**
  * iOS without an Apple account: no signing, no Match repo, no upload. What can still be proven
  * with real tools is everything before Apple is involved.
  */
-const skip = iosSkipReason();
+const skip = requireOrSkip(iosSkipReason());
 if (skip) console.warn(`[qa] iOS scenarios skipped: ${skip}`);
 
 describe.skipIf(!!skip)("ios (no Apple account)", () => {

@@ -47,8 +47,10 @@ describe("question ids", () => {
     expect(bad.map((c) => `${c.file}: .${c.call}(${c.first}`)).toEqual([]);
   });
 
-  it("no code reads answers around the prompter (readline / .question)", () => {
-    const offenders = [...text].filter(([f, s]) => f !== join("utils", "prompt.ts") && /node:readline|\.question\(/.test(s)).map(([f]) => f);
+  it("no code reads answers around the prompter (readline, createInterface, stdin reads)", () => {
+    // process.stdin.isTTY is a check, not a read
+    const around = /node:readline|\.question\(|createInterface|process\.stdin\.(?!isTTY\b)|process\.stdin\[/;
+    const offenders = [...text].filter(([f, s]) => f !== join("utils", "prompt.ts") && around.test(s)).map(([f]) => f);
     expect(offenders).toEqual([]);
   });
 
@@ -74,7 +76,9 @@ describe("question ids", () => {
 
   it("every env var in the table is read by the code", () => {
     const code = [...text].filter(([f]) => f !== join("utils", "questions.ts")).map(([, s]) => s).join("\n");
-    const missing = Object.entries<any>(QUESTIONS).flatMap(([id, q]) => (q.env ?? []).filter((e: string) => !code.includes(e)).map((e: string) => `${id}: ${e}`));
+    // an actual read: process.env.NAME, env.NAME or env["NAME"], not a mention in a string or comment
+    const read = (name: string) => new RegExp(`\\benv\\.${name}\\b|\\benv\\[["']${name}["']\\]`).test(code);
+    const missing = Object.entries<any>(QUESTIONS).flatMap(([id, q]) => (q.env ?? []).filter((e: string) => !read(e)).map((e: string) => `${id}: ${e}`));
     expect(missing).toEqual([]);
   });
 });

@@ -119,7 +119,7 @@ describe("doctor: git state of EAS leftovers", () => {
   async function setup(layout: Layout, ignoreRules: string[]): Promise<Project> {
     const p = await makeProject(layout, `doctor-${layout}`);
     expect((await cli(["init", "--platform", "android", "--non-interactive"], { cwd: p.dir, env: ANDROID_ENV })).code).toBe(0);
-    await writeFile(join(p.repo, ".gitignore"), ["node_modules/", ".expo/", ...ignoreRules, ""].join("\n"));
+    await writeFile(join(p.repo, ".gitignore"), ["node_modules", ".expo/", ...ignoreRules, ""].join("\n"));
     await writeFile(join(p.dir, "credentials.json"), "{}\n");
     await mkdir(join(p.dir, "credentials"), { recursive: true });
     await writeFile(join(p.dir, "credentials", "upload.jks"), "not a real keystore");

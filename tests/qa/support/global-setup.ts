@@ -20,6 +20,25 @@ export default async function setup(): Promise<() => Promise<void>> {
     ? await mkdtemp(join(process.env.QA_RUN_DIR_BASE, "shipyard-qa-"))
     : await mkdtemp(join(tmpdir(), "shipyard-qa-"));
   process.env.QA_RUN_DIR = run;
+  try {
+    await prepareFixture(run);
+  } catch (err) {
+    // vitest does not call the teardown when setup throws: do not leak the temp dir
+    await rm(run, { recursive: true, force: true });
+    throw err;
+  }
+
+  return async () => {
+    if (process.env.QA_KEEP === "1") {
+      // eslint-disable-next-line no-console
+      console.log(`[qa] kept ${run}`);
+      return;
+    }
+    await rm(run, { recursive: true, force: true });
+  };
+}
+
+async function prepareFixture(run: string): Promise<void> {
   const fixture = join(run, "fixture");
   const started = Date.now();
 
@@ -66,13 +85,4 @@ export default async function setup(): Promise<() => Promise<void>> {
   }
   // eslint-disable-next-line no-console
   console.log(`[qa] fixture ready in ${Math.round((Date.now() - started) / 1000)}s (${run})`);
-
-  return async () => {
-    if (process.env.QA_KEEP === "1") {
-      // eslint-disable-next-line no-console
-      console.log(`[qa] kept ${run}`);
-      return;
-    }
-    await rm(run, { recursive: true, force: true });
-  };
 }

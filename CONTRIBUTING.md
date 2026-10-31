@@ -54,7 +54,7 @@ Environment variables:
 | `QA_RUN_DIR_BASE` | Create the run directory here instead of the OS temp dir |
 | `ANDROID_HOME` | Android SDK location (also found at `~/Library/Android/sdk`) |
 
-Everything happens in the run's temp directory; nothing outside it is touched. In CI, `.github/workflows/qa.yml` runs the suite on pull requests, pushes to `main`, nightly, on demand and via `workflow_call`; a failing nightly or `main` run opens or updates one issue labelled `qa-failure`.
+Everything happens in the run's temp directory; nothing outside it is touched. In CI, `.github/workflows/qa.yml` runs the suite on pull requests, pushes to `main`, nightly, on demand and via `workflow_call`; a failing nightly or `main` run opens or updates one issue labelled `qa-failure` (`.github/workflows/qa-report.yml`, a `workflow_run` follow-up, so `qa.yml` itself needs only `contents: read` from a caller). In CI (`CI` set) a scenario whose tool is missing (Xcode, JDK, Android SDK, fastlane, CocoaPods) fails instead of skipping.
 
 ## Architecture
 

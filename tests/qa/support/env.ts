@@ -58,6 +58,18 @@ export function androidSkipReason(): string | undefined {
   return undefined;
 }
 
+/**
+ * Locally a missing tool skips the scenario. In CI (CI set, not "0"/"false") a missing tool is a
+ * broken job image, so it fails the file instead of quietly skipping coverage.
+ */
+export function requireOrSkip(reason: string | undefined): string | undefined {
+  const ci = process.env.CI;
+  if (reason && ci && ci !== "0" && ci.toLowerCase() !== "false") {
+    throw new Error(`QA scenario cannot run in CI: ${reason}`);
+  }
+  return reason;
+}
+
 /** Why the iOS scenarios cannot run here, or undefined when they can. */
 export function iosSkipReason(): string | undefined {
   if (process.platform !== "darwin") return "not macOS";
@@ -188,7 +200,7 @@ export async function makeProject(layout: Layout, label: string): Promise<Projec
   await mkdir(dir, { recursive: true });
   await cp(join(runDir(), "fixture"), dir, { recursive: true, filter: (src) => !/[\\/]node_modules$/.test(src) });
   await symlink(join(runDir(), "fixture", "node_modules"), join(dir, "node_modules"));
-  await writeFile(join(dir, ".gitignore"), "node_modules/\n.expo/\ndist/\n");
+  await writeFile(join(dir, ".gitignore"), "node_modules\n.expo/\ndist/\n");
   if (layout !== "nogit") {
     git(repo, ["init", "-q", "-b", "main"]);
     git(repo, ["-c", "user.email=qa@example.invalid", "-c", "user.name=qa", "add", "-A"]);

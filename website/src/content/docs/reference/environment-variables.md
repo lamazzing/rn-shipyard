@@ -33,7 +33,7 @@ Secrets belong in the environment, not in files in your repo. Variables marked "
 
 | Variable | Effect |
 |---|---|
-| `NO_COLOR` | Any value turns colour off. Output is also plain when stdout is not a terminal (piped, redirected), including the `history` table. `FORCE_COLOR` turns it on |
+| `NO_COLOR` | Any non-empty value turns colour off (also on a terminal, and over `FORCE_COLOR`). Output is also plain when stdout is not a terminal (piped, redirected), including the `history` table. `FORCE_COLOR` turns it on |
 
 ## EAS aliases
 

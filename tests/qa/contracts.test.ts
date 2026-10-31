@@ -51,61 +51,62 @@ interface Invocation {
   name: string;
   project: () => Project;
   args: string[];
+  /** the exact exit code, and the error.code (undefined: success, or a per-platform failure) */
+  code: 0 | 1 | 2;
+  error: string | undefined;
   env?: Record<string, string>;
 }
 
 const invocations: Invocation[] = [
   // no project at all
-  { name: "no command", project: () => empty, args: [] },
-  { name: "unknown option", project: () => empty, args: ["--bogus"] },
-  { name: "unknown subcommand", project: () => empty, args: ["frobnicate"] },
-  { name: "doctor outside a project", project: () => empty, args: ["doctor"] },
-  { name: "doctor bad platform", project: () => empty, args: ["doctor", "--platform", "nope"] },
-  { name: "build outside a project", project: () => empty, args: ["build"] },
-  { name: "build bad platform", project: () => empty, args: ["build", "--platform", "nope"] },
-  { name: "submit outside a project", project: () => empty, args: ["submit"] },
-  { name: "submit --dry-run outside a project", project: () => empty, args: ["submit", "--dry-run"] },
-  { name: "history outside a project", project: () => empty, args: ["history"] },
-  { name: "init outside a project", project: () => empty, args: ["init", "--platform", "android"] },
-  { name: "init bad platform", project: () => empty, args: ["init", "--platform", "nope"] },
+  { name: "no command", code: 1, error: "INVALID_USAGE",  project: () => empty, args: [] },
+  { name: "unknown option", code: 1, error: "INVALID_USAGE",  project: () => empty, args: ["--bogus"] },
+  { name: "unknown subcommand", code: 1, error: "INVALID_USAGE",  project: () => empty, args: ["frobnicate"] },
+  { name: "doctor outside a project", code: 2, error: "MISSING_CONFIG_PROJECT",  project: () => empty, args: ["doctor"] },
+  { name: "doctor bad platform", code: 1, error: "INVALID_FLAGS",  project: () => empty, args: ["doctor", "--platform", "nope"] },
+  { name: "build outside a project", code: 2, error: "MISSING_CONFIG_SHIPYARD",  project: () => empty, args: ["build"] },
+  { name: "build bad platform", code: 2, error: "MISSING_CONFIG_SHIPYARD",  project: () => empty, args: ["build", "--platform", "nope"] },
+  { name: "submit outside a project", code: 2, error: "MISSING_CONFIG_SHIPYARD",  project: () => empty, args: ["submit"] },
+  { name: "submit --dry-run outside a project", code: 2, error: "MISSING_CONFIG_SHIPYARD",  project: () => empty, args: ["submit", "--dry-run"] },
+  { name: "history outside a project", code: 0, error: undefined,  project: () => empty, args: ["history"] },
+  { name: "init outside a project", code: 2, error: "MISSING_CONFIG_PROJECT",  project: () => empty, args: ["init", "--platform", "android"] },
+  { name: "init bad platform", code: 2, error: "MISSING_CONFIG_APP",  project: () => empty, args: ["init", "--platform", "nope"] },
   // Android project
-  { name: "doctor (android project)", project: () => android, args: ["doctor", "--platform", "android"], env: ANDROID_ENV },
-  { name: "doctor missing keystore password", project: () => android, args: ["doctor", "--platform", "android"] },
-  { name: "history", project: () => android, args: ["history"] },
-  { name: "history --platform ios (none)", project: () => android, args: ["history", "--platform", "ios"] },
-  { name: "build ios, not set up", project: () => android, args: ["build", "--platform", "ios"] },
-  { name: "build android blocked by the pre-flight", project: () => android, args: ["build", "--platform", "android"] },
-  { name: "submit --dry-run android", project: () => android, args: ["submit", "--dry-run", "--platform", "android"] },
-  { name: "init android again", project: () => android, args: ["init", "--platform", "android"], env: ANDROID_ENV },
-  { name: "init ios without Match inputs", project: () => android, args: ["init", "--platform", "ios"] },
-  { name: "init --from-eas without credentials.json", project: () => android, args: ["init", "--from-eas", "--platform", "android"], env: ANDROID_ENV },
+  { name: "doctor (android project)", code: 1, error: "REQUIREMENTS_NOT_MET",  project: () => android, args: ["doctor", "--platform", "android"], env: ANDROID_ENV },
+  { name: "doctor missing keystore password", code: 1, error: "REQUIREMENTS_NOT_MET",  project: () => android, args: ["doctor", "--platform", "android"] },
+  { name: "history", code: 0, error: undefined,  project: () => android, args: ["history"] },
+  { name: "history --platform ios (none)", code: 0, error: undefined,  project: () => android, args: ["history", "--platform", "ios"] },
+  { name: "build ios, not set up", code: 1, error: "NO_PLATFORMS",  project: () => android, args: ["build", "--platform", "ios"] },
+  { name: "build android blocked by the pre-flight", code: 1, error: "REQUIREMENTS_NOT_MET",  project: () => android, args: ["build", "--platform", "android"] },
+  { name: "submit --dry-run android", code: 1, error: undefined,  project: () => android, args: ["submit", "--dry-run", "--platform", "android"] },
+  { name: "init android again", code: 0, error: undefined,  project: () => android, args: ["init", "--platform", "android"], env: ANDROID_ENV },
+  { name: "init ios without Match inputs", code: 2, error: "MISSING_CONFIG_IOS",  project: () => android, args: ["init", "--platform", "ios"] },
+  { name: "init --from-eas without credentials.json", code: 2, error: "EAS_CREDENTIALS_NOT_FOUND",  project: () => android, args: ["init", "--from-eas", "--platform", "android"], env: ANDROID_ENV },
   // iOS project
-  { name: "init ios, no way to sign in (MATCH_AUTH_MISSING)", project: () => ios, args: ["init", "--platform", "ios"], env: IOS_ENV },
-  { name: "doctor (ios project)", project: () => ios, args: ["doctor", "--platform", "ios"] },
-  { name: "submit --dry-run ios, nothing built", project: () => ios, args: ["submit", "--dry-run", "--platform", "ios"] },
+  { name: "init ios, no way to sign in (MATCH_AUTH_MISSING)", code: 1, error: "MATCH_AUTH_MISSING",  project: () => ios, args: ["init", "--platform", "ios"], env: IOS_ENV },
+  { name: "doctor (ios project)", code: 1, error: "REQUIREMENTS_NOT_MET",  project: () => ios, args: ["doctor", "--platform", "ios"] },
+  { name: "submit --dry-run ios, nothing built", code: 1, error: "NO_ARTIFACTS",  project: () => ios, args: ["submit", "--dry-run", "--platform", "ios"] },
 ];
 
-describe("--json contract: one document, success, error{code,message,fix}, exit 0/1/2", () => {
+describe("--json contract: one document, success, error{code,message,fix}, the exact exit code (0/1/2)", () => {
   for (const inv of invocations) {
     it(inv.name, async () => {
       const r = await cli([...inv.args, "--json", "--non-interactive"], { cwd: inv.project().dir, env: inv.env });
-      expect([0, 1, 2], `exit code ${r.code}\n${r.all}`).toContain(r.code);
+      expect(r.code, `exit code\n${r.all}`).toBe(inv.code);
       const doc = parseJson(r); // the whole of stdout parses as exactly one document
       expect(typeof doc.success, r.stdout).toBe("boolean");
       expect(r.stdout).not.toMatch(ANSI);
-      if (doc.success) {
-        expect(r.code, r.stdout).toBe(0);
-        return;
-      }
-      expect(r.code, r.stdout).not.toBe(0);
+      expect(doc.success, r.stdout).toBe(inv.code === 0);
+      if (doc.success) return;
       if (doc.error) {
         // the envelope, with real text in all three fields
         expect(Object.keys(doc.error).sort()).toEqual(["code", "fix", "message"]);
-        expect(doc.error.code).toMatch(/^[A-Z][A-Z0-9_]+$/);
+        expect(doc.error.code).toBe(inv.error);
         expect(typeof doc.error.message).toBe("string");
         expect(doc.error.message.length).toBeGreaterThan(0);
         expect(typeof doc.error.fix).toBe("string");
       } else {
+        expect(inv.error, "a per-platform failure has no top-level error").toBeUndefined();
         // build/submit report per-platform failures (documented: `{ success, platforms, ... }`);
         // each failed platform must still say what failed
         const failed = Object.values(doc.platforms ?? {}).filter((p: any) => p?.status === "error") as any[];
@@ -149,10 +150,8 @@ describe("no ANSI escapes when piped or with NO_COLOR", () => {
       ["history table", ["history"]],
       ["doctor with problems", ["doctor"]],
     ] as const) {
-      // QA-BUG: NO_COLOR is ignored on a terminal. chalk 5 (supports-color) does not read NO_COLOR,
-      // yet README / the docs / src/core/output.ts promise it. Repro: `NO_COLOR=1 rn-shipyard doctor`
-      // in a terminal still prints colour. Drop `.fails` when fixed (this test then fails loudly).
-      it.fails(`NO_COLOR=1: ${name}`, async () => {
+      // chalk 5 ignores NO_COLOR; src/index.ts applies it (applyNoColor)
+      it(`NO_COLOR=1: ${name}`, async () => {
         const cwd = name === "doctor with problems" ? empty.dir : android.dir;
         const r = await tty(["TERM=xterm-256color", "NO_COLOR=1"], [...args], cwd);
         expect(r.stdout.length).toBeGreaterThan(0);
