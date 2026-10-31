@@ -205,6 +205,7 @@ Error codes are listed in the [error reference](https://lamazzing.github.io/rn-s
 | `--profile <name>` | Build profile from `eas.json` (default `production`) |
 | `--submit` | Submit after a successful build |
 | `--version-code <n>` | Android versionCode, must be greater than the last used one |
+| `--build-number <n>` | iOS build number (`CFBundleVersion`), must be greater than the last used one |
 | `--skip-version-check` | Skip the "version looks unchanged" warning |
 | `--skip-checks` | Skip the `doctor` pre-flight |
 
@@ -223,6 +224,12 @@ iOS and Android build one after the other and independently: if iOS fails, Andro
 **Two phases, like EAS.** Anything that may prompt (cloning the Match repo, the Apple login) runs first on your real terminal. The build or upload itself then runs with no stdin, `CI=1` and redacted output, so a tool that wants to prompt fails immediately instead of hanging. With `--non-interactive`, `--json` or no TTY there is no first phase: the Match repo is cloned with prompts disabled and fails fast with `MATCH_REPO_AUTH_FAILED` if git needs one.
 
 **Android versionCode.** The code is the larger of `expo.android.versionCode` (1 if unset) and `lastUsed + 1`, where `lastUsed` comes from `.shipyard/version-code.json` and your build history. It is applied to the generated Gradle project, never written to `app.json`, and the counter advances only after a successful build. A committed `android/app/build.gradle` is never edited: its literal `versionCode` is read and used, and if it cannot be read the build fails rather than guess.
+
+**iOS signing.** After Match (read-only) and before the archive, the build lane applies manual signing to the **app target only** (not Pods, not app extensions) in the Xcode project: your Team ID from `.shipyard/config.json`, the provisioning profile and distribution certificate Match installed, and the bundle id; gym gets the matching `provisioningProfiles` export mapping. This fixes `Signing for <App> requires a development team` without putting `appleTeamId` in `app.json`. A generated `ios/` is simply rebuilt next time; a git-tracked `ios/` has `project.pbxproj` and `Info.plist` restored byte for byte afterwards, also on Ctrl-C. App extensions are not signed by rn-shipyard yet. A `fastlane/Fastfile` from an older rn-shipyard fails with `FASTFILE_OUTDATED`: run `rn-shipyard init` again.
+
+**iOS build number.** The next number is the larger of `expo.ios.buildNumber` (integers only, 1 if unset) and `lastUsed + 1` (`.shipyard/version-code.json` `ios.lastUsed` and your build history). With an App Store Connect API key (`EXPO_ASC_KEY_ID`, `EXPO_ASC_ISSUER_ID`, `EXPO_ASC_API_KEY_PATH`, or `submit.<profile>.ios.ascApi*` in `eas.json`) the lane first reads the latest TestFlight build number and uses `max(local, latest + 1)`, like EAS remote versioning. Without a key it uses the local counter and prints one hint. The number is written to the generated app's `Info.plist` (`CFBundleVersion`), never to `app.json`, and the counter advances only after a successful build. Your marketing version is never touched.
+
+**Failure summary.** The error shown (and stored in `--json` and history) is the real one: the xcodebuild or Gradle `error:` line, else fastlane's `[!]` line, else the last 15 lines. The Gemfile tip and update notices are ignored.
 
 Exit `0` all platforms succeeded, `1` any failed, `2` not initialized.
 
@@ -344,7 +351,7 @@ What to commit:
 
 | Path | Commit? |
 |---|---|
-| `.shipyard/config.json`, `.shipyard/.gitignore`, `.shipyard/version-code.json` | Yes |
+| `.shipyard/config.json`, `.shipyard/.gitignore`, `.shipyard/version-code.json` (Android and iOS counters) | Yes |
 | `fastlane/Fastfile`, `Appfile`, `Matchfile` | Yes |
 | `.shipyard/history.json`, `output/` (`.ipa`, `.aab`) | No (ignored) |
 | `.shipyard/android/*.keystore`, `*.jks` | No, never (ignored) |
@@ -389,6 +396,8 @@ More: [JSON and exit codes](https://lamazzing.github.io/rn-shipyard/reference/js
 - **`Project not initialized` (exit 2):** run `rn-shipyard init` in the project root.
 - **Match setup skipped:** set `MATCH_PASSWORD` and re-run `init --platform ios`, or run `fastlane match appstore` yourself.
 - **`VERSION_CODE_REUSED`:** pass a `--version-code` greater than the reported value, or omit the flag.
+- **`BUILD_NUMBER_REUSED`:** pass a `--build-number` greater than the reported value, or omit the flag.
+- **`FASTFILE_OUTDATED`:** your `fastlane/Fastfile` came from an older rn-shipyard (no iOS signing step). Run `rn-shipyard init` again.
 - **`KEYSTORE_NOT_FOUND` / `CREDENTIALS_NOT_READABLE`:** check `keystorePath` and `credentialsPath` in `.shipyard/config.json`.
 - **Android submit skipped:** no service account configured. Set `SUPPLY_JSON_KEY` or `submit.<profile>.android.serviceAccountKeyPath` in `eas.json`.
 - **`MISSING_CONFIG_IOS_CREDENTIALS` (exit 2):** set an App Store Connect API key or an Apple ID plus password, or run `submit` in a terminal and log in when asked. See [iOS credentials for submit](#ios-credentials-for-submit).

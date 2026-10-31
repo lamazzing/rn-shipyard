@@ -16,12 +16,85 @@ platform :ios do
     # rn-shipyard detects the workspace and scheme that expo prebuild generated (Expo
     # sanitises the iOS project name) and passes them in as workspace: / scheme:.
     UI.user_error!("Pass workspace: and scheme: (rn-shipyard build does this)") unless options[:workspace] && options[:scheme]
+    bundle_id = <%- rb(ios.bundleId) %>
+    team_id = <%- rb(ios.teamId) %>
+
+    # shipyard-ios-build-number: App Store Connect rejects a reused CFBundleVersion. rn-shipyard
+    # passes the next number from its local counter (build_number:). With an App Store Connect API
+    # key in the environment (APP_STORE_CONNECT_API_KEY_*), the latest TestFlight build number is
+    # read first and the number is max(local, latest + 1), like EAS remote versioning.
+    wanted_build_number = options[:build_number].to_i
+    UI.user_error!("Pass build_number: (rn-shipyard build does this)") if wanted_build_number < 1
+    latest_build_number = nil
+    if [ENV["APP_STORE_CONNECT_API_KEY_KEY_ID"], ENV["APP_STORE_CONNECT_API_KEY_ISSUER_ID"]].none? { |v| v.to_s.empty? } &&
+       [ENV["APP_STORE_CONNECT_API_KEY_KEY"], ENV["APP_STORE_CONNECT_API_KEY_KEY_FILEPATH"]].any? { |v| !v.to_s.empty? }
+      begin
+        api_key = app_store_connect_api_key
+        latest = latest_testflight_build_number(api_key: api_key, app_identifier: bundle_id, initial_build_number: 0)
+        latest_build_number = Integer(latest.to_s, exception: false)
+        UI.important("Latest TestFlight build number is not an integer (" + latest.to_s + "); using the local counter") if latest_build_number.nil?
+      rescue StandardError => e
+        UI.important("Could not read the latest TestFlight build number (" + e.message.to_s.lines.first.to_s.strip + "); using the local counter")
+      end
+    end
+    if options[:build_number_override].to_s == "true"
+      if latest_build_number && wanted_build_number <= latest_build_number
+        UI.user_error!("Build number " + wanted_build_number.to_s + " is not newer than the latest TestFlight build (" + latest_build_number.to_s + ")")
+      end
+      build_number = wanted_build_number
+    else
+      build_number = latest_build_number && latest_build_number >= wanted_build_number ? latest_build_number + 1 : wanted_build_number
+    end
+    UI.message("SHIPYARD_BUILD_NUMBER=" + build_number.to_s)
+    UI.message("SHIPYARD_TESTFLIGHT_LATEST=" + (latest_build_number.nil? ? "none" : latest_build_number.to_s))
+
+    # shipyard-ios-signing: Xcode must be told the team and the Match profile, or the archive fails
+    # with "Signing for <App> requires a development team". Manual signing is applied to the APP
+    # target only (not Pods, not extensions), in the generated project, after match and before gym.
+    require "xcodeproj"
+    project_path = File.join(File.dirname(options[:workspace]), File.basename(options[:workspace], File.extname(options[:workspace])) + ".xcodeproj")
+    UI.user_error!("Xcode project not found next to the workspace: " + project_path) unless File.directory?(project_path)
+    project = Xcodeproj::Project.open(project_path)
+    app_targets = project.native_targets.select { |t| t.product_type == "com.apple.product-type.application" }
+    app_target = app_targets.find { |t| t.name == options[:scheme] }
+    app_target ||= app_targets.find { |t| t.build_configurations.any? { |c| c.build_settings["PRODUCT_BUNDLE_IDENTIFIER"] == bundle_id } }
+    app_target ||= app_targets.first if app_targets.length == 1
+    UI.user_error!("Could not tell which target is the app in " + project_path + " (application targets: " + app_targets.map(&:name).join(", ") + ")") if app_target.nil?
+
+    profile_env = Match::Utils.environment_variable_name_profile_name(app_identifier: bundle_id, type: Match.profile_type_sym(<%- rb(ios.matchType) %>))
+    profile_name = ENV[profile_env].to_s
+    UI.user_error!("match did not provide a provisioning profile name (" + profile_env + " is empty)") if profile_name.empty?
+    cert_env = Match::Utils.environment_variable_name_certificate_name(app_identifier: bundle_id, type: Match.profile_type_sym(<%- rb(ios.matchType) %>))
+    code_sign_identity = ENV[cert_env].to_s
+    code_sign_identity = "Apple Distribution" if code_sign_identity.empty?
+
+    update_code_signing_settings(
+      use_automatic_signing: false,
+      path: project_path,
+      team_id: team_id,
+      targets: [app_target.name],
+      profile_name: profile_name,
+      code_sign_identity: code_sign_identity,
+      bundle_identifier: bundle_id
+    )
+
+    # The build number goes into the generated app's Info.plist (app.json is never touched).
+    plist_setting = app_target.build_configurations.map { |c| c.build_settings["INFOPLIST_FILE"] }.compact.first.to_s
+    plist_path = File.join(File.dirname(project_path), plist_setting.gsub(/\A\$[({]?(SRCROOT|PROJECT_DIR)[)}]?\//, ""))
+    UI.user_error!("Info.plist of target " + app_target.name + " not found (" + plist_setting + ")") if plist_setting.empty? || !File.exist?(plist_path)
+    set_info_plist_value(path: plist_path, key: "CFBundleVersion", value: build_number.to_s)
+
     gym(
       workspace: options[:workspace],
       scheme: options[:scheme],
       export_method: "app-store",
+      export_team_id: team_id,
+      export_options: {
+        signingStyle: "manual",
+        provisioningProfiles: { bundle_id => profile_name }
+      },
       output_directory: options[:output_dir] || "./output",
-      output_name: options[:output_name] || <%- rb(appName + ".ipa") %>
+      output_name: (options[:output_name] || <%- rb(appName + ".ipa") %>).gsub("__BUILD_NUMBER__", build_number.to_s)
     )
   end
 

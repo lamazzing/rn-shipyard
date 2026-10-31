@@ -6,18 +6,21 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- `doctor` warns (never fails, never deletes) when EAS's plaintext `credentials.json` / `credentials/` are still on disk after a successful build, with the exact `rm` command and whether they are git-ignored or tracked.
+- The release workflow waits until npm serves the new tarball and `npm view` (every 15 s, up to 10 min) before finishing.
+- iOS build-number counter in `.shipyard/version-code.json` (`ios.lastUsed`), never reused. With an App Store Connect API key (`EXPO_ASC_*` or `eas.json` `submit.<profile>.ios.ascApi*`) the build lane reads the latest TestFlight build number and uses `max(local, latest + 1)`, like EAS remote versioning; without a key it uses the local counter and prints one hint. The number is set as `CFBundleVersion` in the generated `Info.plist` (never `app.json`) and recorded in history. New `build --build-number <n>` override; new error codes `INVALID_BUILD_NUMBER`, `BUILD_NUMBER_REUSED`, `FASTFILE_OUTDATED` (a Fastfile from an older rn-shipyard: run `rn-shipyard init` again).
+
 ### Changed
 - `doctor` readiness is honest: a platform missing from `.shipyard/config.json` is "not set up" (next step `rn-shipyard init --platform <p>`), never "Ready", and a submit is ready only when a successful build in history still has its `.ipa`/`.aab` on disk (otherwise "no .ipa yet: run rn-shipyard build --platform ios"). In `--json`, `readiness.<action>` gains `state` and `note`. The pre-flight of `build --submit` is unchanged.
 - `doctor`: an unset `JAVA_HOME` passes when the `java` on PATH is JDK 17+ ("not set; Gradle uses java from PATH (25.0.1)"; Gradle's wrapper uses `$JAVA_HOME/bin/java` if set, else `java` from PATH). The `export` line stays in `--json` as an optional hint. It warns only when neither works.
 - `submit` (also `--dry-run`) with the requested platform not set up now says so and names `rn-shipyard init --platform <p>` in the error and its `fix`.
 - README status: Android and iOS are both verified end to end on a real Expo app.
 
-### Added
-- `doctor` warns (never fails, never deletes) when EAS's plaintext `credentials.json` / `credentials/` are still on disk after a successful build, with the exact `rm` command and whether they are git-ignored or tracked.
-- The release workflow waits until npm serves the new tarball and `npm view` (every 15 s, up to 10 min) before finishing.
-
 ### Fixed
 - `history` printed colour codes (red table header) when piped or with `NO_COLOR` set; tables are now plain unless stdout is a colour terminal.
+- iOS archive no longer fails with `Signing for <App> requires a development team`. After Match (read-only) and before gym, the build lane applies manual signing to the app target only (Team ID from `.shipyard/config.json`, the provisioning profile and certificate name Match exports, the bundle id) and passes gym the matching `provisioningProfiles` export mapping. No `appleTeamId` in `app.json` needed. A git-tracked `ios/` has `project.pbxproj` and `Info.plist` restored byte for byte afterwards (also on Ctrl-C). App extensions are not signed yet.
+- The failure summary shows the real error: the xcodebuild/gym or Gradle `error:` line, else fastlane's `[!]` line, else the last 15 non-empty lines, ignoring the Gemfile tip and update notices. It applies to the terminal summary, `--json` `error` and history, for iOS and Android.
 
 ## [0.2.1] - 2026-10-31
 
