@@ -49,7 +49,7 @@ Usage errors (unknown option, missing argument) also use this envelope, with `IN
 |---|---|
 | `build` | `success`, `platforms`, `prebuild`, `warnings`, and `submit` when `--submit` is used |
 | `submit` | `success`, `platforms`. With `--dry-run`: `dryRun: true`, `cwd` and per platform `status`, `artifactPath`, `command`, `problems` |
-| `init` | `success`, and `warnings` |
+| `init` | `success`, `config`, `setup` (per platform `status`; `ios.status` is `configured`, `imported`, `skipped` or `failed`, with `reason` and `nextStep` when not done; `preserved` lists platforms kept from the existing config), `nextSteps`, `files`, and `warnings`. With `--from-eas` also `imported` and `plaintextFiles` |
 | `doctor` | `success`, `checks`, `readiness`, `summary`, `nextStep`, and `error` when a check failed |
 
 `prebuild.<platform>.action` is `generated`, `skipped_tracked` or `refused`. `warnings` lists everything that would have been printed as a warning.

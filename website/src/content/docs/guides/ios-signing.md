@@ -18,7 +18,17 @@ export APPLE_TEAM_ID=ABCDE12345
 rn-shipyard init --platform ios
 ```
 
-`init` writes the URL into `.shipyard/config.json` and `fastlane/Matchfile`, then runs `fastlane match appstore`. Without `MATCH_PASSWORD` it skips that step. Run it later with `rn-shipyard init --platform ios` after exporting the password, or run `fastlane match appstore` yourself.
+`init` writes the URL into `.shipyard/config.json` and `fastlane/Matchfile`, then runs `fastlane match appstore`. Running it for iOS never touches your Android setup. Without a Match password it skips that step, and the summary says "Match signing NOT set up" with the next step. Run it later with `rn-shipyard init --platform ios` after exporting the password.
+
+## Where the Match password lives
+
+- **Locally (macOS):** the keychain. fastlane match reads its passphrase from `MATCH_PASSWORD`, else from the keychain item with server `match_<git url>`. In a terminal, `init` offers to save it there: it runs `security add-internet-password -s match_<git url> -U -w`, and macOS's `security` asks for the password on your terminal (it never appears in a command line or in rn-shipyard's output). From then on you do not export `MATCH_PASSWORD` for builds, and `doctor` and the build pre-flight accept the keychain item (they only check that it exists, never read it).
+- **CI and `--non-interactive`:** the environment variable `MATCH_PASSWORD` (a CI secret). A CI runner has no keychain item.
+- A wrong password saved in the keychain makes match fail to decrypt; delete it with `security delete-internet-password -s "match_<git url>"` and run `init` again.
+
+## Check the App Store Connect key
+
+If you use an App Store Connect API key for `submit`, `init` verifies it with one read-only call (`GET /v1/apps` for your bundle ID). A key with a role that is too low (`ASC_KEY_FORBIDDEN`, needs App Manager or Admin) or a wrong key/issuer (`ASC_KEY_INVALID`) stops `init` instead of failing at your first submit. A missing app record only warns: create the app in App Store Connect first.
 
 ## Keep credentials out of the URL
 

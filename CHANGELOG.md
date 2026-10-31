@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- `init --platform ios` (or `android`) no longer deletes the other platform's setup. It merges into the existing `.shipyard/config.json` (the other block, `createdAt`, `outputDir`, `version-code.json` and `history.json` are left alone) and regenerates `fastlane/Fastfile`, `Appfile` and `Matchfile` for every configured platform. Re-running a platform replaces only its block and takes its prompt defaults from the existing config (an Android re-run keeps the configured keystore, alias and credentials file). An unreadable config stops with `INVALID_CONFIG` instead of being overwritten. Also with `--from-eas`.
+- `init` no longer prints "iOS: Match signing configured" when it skipped Match. The summary and `--json` (`setup.ios.status`: `configured`, `imported`, `skipped`, `failed`, plus `reason` and `nextStep`) say what actually happened. `--json` now always has `setup`, `nextSteps` and `files`.
+
+### Added
+- Match password in the macOS keychain: fastlane match reads its passphrase from `MATCH_PASSWORD`, else from the keychain item `match_<git url>`. In a terminal `init` offers to save it there (`security add-internet-password ... -w`, `security` asks for the password itself; it is never in argv). `init`, the build pre-flight and `doctor` accept "found in the macOS keychain" (exit code of `security find-internet-password` only, the password is never read). CI keeps using `MATCH_PASSWORD`.
+- `init` checks a configured App Store Connect API key with one read-only call (`GET /v1/apps?filter[bundleId]=...`, ES256 JWT built with `node:crypto`, 15 s timeout). New error codes `ASC_KEY_INVALID` (401, unreadable `.p8`) and `ASC_KEY_FORBIDDEN` (403, role too low: App Manager or Admin). A missing app record or a network error only warns. Nothing about the key is logged.
+- `init --from-eas` without a `credentials.json`: in a terminal it prints every `eas-cli` question with the right answer (including "Do you want to log in to your Apple account?": n, the download only reads Expo's servers) and offers to run `npx eas-cli credentials -p <platform>` for you, then continues. Non-interactive runs keep `EAS_CREDENTIALS_NOT_FOUND` (exit 2) with the exact menu path in `fix` (eas-cli has no non-interactive download). Documented in the migrating-from-EAS guide.
+
 ## [0.2.1] - 2026-10-31
 
 ### Changed

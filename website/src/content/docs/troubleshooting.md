@@ -11,7 +11,7 @@ First, run `rn-shipyard doctor`. Most problems show up there with a fix command.
 
 **`Project not initialized` (exit 2).** Run `rn-shipyard init` in the project root.
 
-**Match setup skipped.** Set `MATCH_PASSWORD` and re-run `init --platform ios`, or run `fastlane match appstore` yourself.
+**Match setup skipped.** The `init` summary says "Match signing NOT set up". Set `MATCH_PASSWORD`, or run `init` in a terminal and save the password in the macOS keychain, then re-run `init --platform ios`. Your Android setup is kept.
 
 **`INVALID_MATCH_GIT_URL`.** The URL has a token in it. Use an SSH URL, or a plain `https://` URL with `MATCH_GIT_BASIC_AUTHORIZATION`.
 

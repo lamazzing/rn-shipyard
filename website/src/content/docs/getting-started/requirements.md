@@ -79,7 +79,7 @@ How to read it:
 - The pre-flight makes no network calls. It leaves out the Match repo reachability check (`doctor` does it) and the App Store Connect credentials check (`submit` checks credentials itself).
 - `init` leaves out the checks for what it creates: `.shipyard/config.json`, `eas.json` and the whole Signing & submit group.
 - `build` and `submit` accept `--skip-checks` to bypass it. `submit --dry-run` does not run it.
-- Without `MATCH_PASSWORD`, an interactive iOS build gets a warning; with `--non-interactive`, `--json` or `CI` set it is a blocking problem.
+- Without `MATCH_PASSWORD` and without a Match passphrase in the macOS keychain (`match_<git url>`), an interactive iOS build gets a warning; with `--non-interactive`, `--json` or `CI` set it is a blocking problem.
 - Android builds need a keystore password in `ANDROID_KEYSTORE_PASSWORD` or the credentials file.
 
 Check one platform only, or get JSON:

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 vi.mock("../../src/utils/shell.js", () => ({ exec: vi.fn() }));
@@ -280,10 +280,37 @@ describe("project checks", () => {
 
 describe("signing and submit checks", () => {
   it("MATCH_PASSWORD: warn when interactive, fail with --non-interactive, never prints the value", async () => {
+    mockMachine(respond("security", fail("not found", 44)));
     const env = { ...fx.env, MATCH_PASSWORD: undefined };
     expect((await run("match-password", { env }))?.status).toBe("warn");
     expect((await run("match-password", { env, nonInteractive: true }))?.status).toBe("fail");
     expect((await run("match-password"))?.detail).toBe("set");
+  });
+
+  it("MATCH_PASSWORD: accepted when it is in the macOS keychain, looked up by exit code only", async () => {
+    const mockedExec = vi.mocked(exec);
+    mockMachine(); // healthy: security finds the item
+    const cfgPath = join(fx.dir, ".shipyard", "config.json");
+    const cfg = JSON.parse(await readFile(cfgPath, "utf-8"));
+    cfg.platforms.ios.matchGitUrl = "git@github.com:me/certs.git";
+    await writeFile(cfgPath, JSON.stringify(cfg));
+    const env = { ...fx.env, MATCH_PASSWORD: undefined };
+    const c = await run("match-password", { env, nonInteractive: true });
+    expect(c?.status).toBe("pass");
+    expect(c?.detail).toContain("keychain");
+    const call = mockedExec.mock.calls.find(([cmd, a]) => cmd === "security" && a[0] === "find-internet-password")!;
+    expect(call[1][1]).toBe("-s");
+    expect(call[1][2]).toBe("match_git@github.com:me/certs.git"); // the server name fastlane match uses: match_<git url>
+    expect(call[1]).not.toContain("-w");
+    expect(call[1]).not.toContain("-g");
+  });
+
+  it("MATCH_PASSWORD: a git URL with credentials is never put into the keychain lookup's argv", async () => {
+    mockMachine(); // healthy: security would find an item
+    const env = { ...fx.env, MATCH_PASSWORD: undefined };
+    const c = await run("match-password", { env, nonInteractive: true });
+    expect(c?.status).toBe("fail");
+    expect(vi.mocked(exec).mock.calls.some(([cmd]) => cmd === "security")).toBe(false);
   });
 
   it("match repo unreachable is a warning, with non-interactive git settings and no token in the output", async () => {
