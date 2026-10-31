@@ -47,8 +47,12 @@ let saved: Record<string, string | undefined>;
 async function run(extra: Partial<InitOptions> = {}): Promise<{ code: number; json: any }> {
   out = [];
   let code = 0;
+  process.exitCode = undefined;
   try {
     await initCmd({ platform: "ios", json: true, nonInteractive: true, ...extra });
+    // a failed platform setup sets process.exitCode instead of calling process.exit
+    code = Number(process.exitCode ?? 0);
+    process.exitCode = undefined;
   } catch (e) {
     if (!(e instanceof ExitError)) throw e;
     code = e.code;

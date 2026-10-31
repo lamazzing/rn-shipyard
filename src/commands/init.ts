@@ -145,7 +145,8 @@ export default async function initCmd(opts: InitOptions): Promise<void> {
   }
   prompter.current?.close();
   // A requested platform's setup ended "failed": everything is written and reported, but scripts must see exit 1
-  if (exitAfter) process.exit(exitAfter);
+  // exitCode, not exit(): the text summary went through console.log, which is async on a pipe
+  if (exitAfter) process.exitCode = exitAfter;
 }
 
 /** Resolves to an exit code when init finished but a requested platform's setup failed. */
