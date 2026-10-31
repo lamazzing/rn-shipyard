@@ -58,7 +58,7 @@ export APPLE_TEAM_ID=ABCDE12345
 rn-shipyard init --platform ios
 ```
 
-`init` asks for the bundle identifier, team ID and Match repo URL (the environment variables and your config fill in the defaults). With `MATCH_PASSWORD` set it runs `fastlane match appstore`. Without it, `init` skips that step and tells you to run it later.
+`init` asks for the bundle identifier, team ID and Match repo URL (the environment variables and your config fill in the defaults). With `MATCH_PASSWORD` set it runs `fastlane match appstore`. Without it (and without a Match password in the macOS keychain, which `init` offers to save in a terminal), `init` skips that step, says so in its summary, and tells you what to run next.
 
 When `init` runs `fastlane match`, it runs on your own terminal, so Git or SSH credentials, your Apple ID password and the 2FA code can be typed there. Its output is not redacted. In CI, or with `--non-interactive`, nothing prompts and a missing credential fails fast. See [CI and scripting](/guides/ci-scripting/).
 

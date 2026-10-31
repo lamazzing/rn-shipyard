@@ -179,7 +179,8 @@ export interface IosEasImportOptions {
   teamId: string;
   /** The app's bundle id (config), to check a profile for it was imported */
   bundleId: string;
-  matchPassword: string;
+  /** Absent = fastlane reads the passphrase from the macOS keychain (item match_<git url>) */
+  matchPassword?: string;
   projectDir: string;
   interactive: boolean;
   stream: boolean;
@@ -217,7 +218,7 @@ export async function importIosCredentials(opts: IosEasImportOptions): Promise<I
     }
   }
 
-  const redact: string[] = [opts.matchPassword, ...opts.targets.map((t) => t.certificatePassword), ...gitUrlSecrets(opts.gitUrl)];
+  const redact: string[] = [...(opts.matchPassword ? [opts.matchPassword] : []), ...opts.targets.map((t) => t.certificatePassword), ...gitUrlSecrets(opts.gitUrl)];
   const workdir = await mkdtemp(join(tmpdir(), "shipyard-eas-ios-"));
   await chmod(workdir, 0o700);
   const handle = registerCleanup(

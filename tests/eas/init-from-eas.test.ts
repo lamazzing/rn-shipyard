@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { mkdtemp, writeFile, readFile, mkdir, realpath, access, stat } from "node:fs/promises";
+import { mkdtemp, writeFile, readFile, mkdir, realpath, access, stat, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -95,6 +95,7 @@ beforeEach(async () => {
       return { exitCode: 0, stdout: "", stderr: "" };
     }
     if (cmd === "git") return { exitCode: 1, stdout: "", stderr: "" }; // not ignored, not tracked
+    if (cmd === "security") return { exitCode: 44, stdout: "", stderr: "" }; // no Match passphrase in the keychain
     return { exitCode: 0, stdout: "", stderr: "" };
   }) as never);
 });
@@ -318,3 +319,77 @@ describe("init --from-eas (iOS)", () => {
   });
 });
 
+
+describe("init --from-eas merges into the existing config", () => {
+  const iosSection = {
+    ios: { provisioningProfilePath: "credentials/ios/profile.mobileprovision", distributionCertificate: { path: "credentials/ios/dist-cert.p12", password: "p12-secret" } },
+  };
+  const readConfigJson = async () => JSON.parse(await readFile(join(dir, ".shipyard", "config.json"), "utf-8"));
+
+  it("--from-eas for ios after an android --from-eas keeps the android block and lanes", async () => {
+    expect((await run()).code).toBe(0);
+    const first = await readConfigJson();
+    await writeFile(join(dir, "credentials.json"), JSON.stringify(iosSection));
+    process.env.MATCH_GIT_URL = "git@github.com:me/certs.git";
+    process.env.APPLE_TEAM_ID = "ABCDE12345";
+    process.env.MATCH_PASSWORD = "match-pw";
+    out = [];
+    const { code, json } = await run({ platform: "ios" });
+    expect(code).toBe(0);
+    const after = await readConfigJson();
+    expect(after.platforms.android).toEqual(first.platforms.android);
+    expect(after.platforms.ios.bundleId).toBe("com.x.app");
+    expect(json.setup).toMatchObject({ ios: { status: "imported" }, preserved: ["android"] });
+    const ff = await readFile(join(dir, "fastlane", "Fastfile"), "utf-8");
+    expect(ff).toContain("platform :android do");
+    expect(ff).toContain("lane :shipyard_match_import");
+  });
+
+  it("--from-eas for android after ios keeps the ios block and the Matchfile", async () => {
+    await writeFile(join(dir, "credentials.json"), JSON.stringify(iosSection));
+    process.env.MATCH_GIT_URL = "git@github.com:me/certs.git";
+    process.env.APPLE_TEAM_ID = "ABCDE12345";
+    process.env.MATCH_PASSWORD = "match-pw";
+    expect((await run({ platform: "ios" })).code).toBe(0);
+    const first = await readConfigJson();
+    await easJson();
+    out = [];
+    const { code } = await run({ platform: "android" });
+    expect(code).toBe(0);
+    const after = await readConfigJson();
+    expect(after.platforms.ios).toEqual(first.platforms.ios);
+    expect(after.platforms.android.keystoreAlias).toBe("upload");
+    expect(await exists(join(dir, "fastlane", "Matchfile"))).toBe(true);
+  });
+
+  it("--platform all with a file that has only android keeps an existing ios block", async () => {
+    await mkdir(join(dir, ".shipyard"), { recursive: true });
+    const ios = { enabled: true, signingMethod: "match", matchGitUrl: "git@github.com:me/certs.git", matchType: "appstore", teamId: "ABCDE12345", bundleId: "com.x.app" };
+    await writeFile(join(dir, ".shipyard", "config.json"), JSON.stringify({ version: "1.0.0", createdAt: "2026-01-01T00:00:00.000Z", platforms: { ios }, outputDir: "./output" }));
+    const { code } = await run({ platform: "all" });
+    expect(code).toBe(0);
+    const after = await readConfigJson();
+    expect(after.platforms.ios).toEqual(ios);
+    expect(after.platforms.android.keystoreAlias).toBe("upload");
+    expect(after.createdAt).toBe("2026-01-01T00:00:00.000Z");
+  });
+});
+
+describe("init --from-eas without credentials.json", () => {
+  const interactiveTty = (isTTY: boolean) => {
+    Object.defineProperty(process.stdin, "isTTY", { value: isTTY, configurable: true });
+    Object.defineProperty(process.stdout, "isTTY", { value: isTTY, configurable: true });
+  };
+  afterEach(() => interactiveTty(false));
+
+  it("non-interactive: EAS_CREDENTIALS_NOT_FOUND with the exact menu path and the Apple login answer; eas-cli is not started", async () => {
+    await rm(join(dir, "credentials.json"));
+    const { code, json } = await run({ platform: "ios" });
+    expect(code).toBe(2);
+    expect(json.error.code).toBe("EAS_CREDENTIALS_NOT_FOUND");
+    expect(json.error.fix).toContain("npx eas-cli credentials");
+    expect(json.error.fix).toContain("Do you want to log in to your Apple account?");
+    expect(json.error.fix).toContain("Download credentials from EAS to credentials.json");
+    expect(vi.mocked(exec).mock.calls.some(([c]) => c === "npx")).toBe(false);
+  });
+});

@@ -7,7 +7,7 @@ description: What lives in .shipyard/, fastlane/ and output/, and which of it to
 your Expo project
 ├── eas.json / app.json    read only, never modified
 ├── .shipyard/
-│   ├── config.json        written by init
+│   ├── config.json        written by init (merged per platform, never reset)
 │   ├── history.json       build and submit log
 │   ├── version-code.json  Android versionCode and iOS build number counters
 │   ├── .gitignore         written by init

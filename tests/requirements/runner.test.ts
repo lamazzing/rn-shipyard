@@ -7,7 +7,7 @@ import { runRequirementChecks, requirementsError, computeReadiness, ALL_CHECKS }
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { exitCodeForError } from "../../src/utils/errors.js";
-import { mockMachine, missing, respond, makeFixture, type Fixture } from "./fixtures.js";
+import { mockMachine, missing, respond, fail, makeFixture, type Fixture } from "./fixtures.js";
 
 let fx: Fixture;
 beforeEach(async () => {
@@ -76,8 +76,11 @@ describe("readiness", () => {
   });
 
   it("only warnings: ok, and the next step mentions them", async () => {
-    const env = { ...fx.env, MATCH_PASSWORD: undefined, };
-    mockMachine(respond("xcodebuild", { exitCode: 0, stdout: "Xcode 14.3", stderr: "" }, "-version"));
+    const env = { ...fx.env, MATCH_PASSWORD: undefined };
+    mockMachine(
+      respond("xcodebuild", { exitCode: 0, stdout: "Xcode 14.3", stderr: "" }, "-version"),
+      respond("security", fail("not found", 44))
+    );
     const r = await runRequirementChecks({ projectDir: fx.dir, env });
     expect(r.ok).toBe(true);
     expect(r.summary.warn).toBe(2);

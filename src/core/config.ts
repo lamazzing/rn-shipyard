@@ -77,6 +77,15 @@ export async function readConfig(projectDir: string): Promise<ShipyardConfig> {
   }
 }
 
+/**
+ * The current .shipyard/config.json (paths resolved), or undefined when there is none. An
+ * unreadable or invalid file throws INVALID_CONFIG: init must never overwrite it silently.
+ */
+export async function readExistingConfig(projectDir: string): Promise<ShipyardConfig | undefined> {
+  if (!(await configExists(projectDir))) return undefined;
+  return readConfig(projectDir);
+}
+
 function mapAndroidPaths(
   android: PlatformAndroidConfig,
   fn: (p: string) => string

@@ -6,6 +6,7 @@ import { checkIosSubmitCredentials } from "../platforms/ios/submit.js";
 import { applyEasSubmitIos } from "../utils/apple-env.js";
 import { type CheckDef, type CheckContext, type Outcome, DOCS_BASE } from "./types.js";
 import { tryExec, isFile } from "./helpers.js";
+import { hasMatchPasswordInKeychain } from "../platforms/ios/match-keychain.js";
 
 const MATCH_DOCS = `${DOCS_BASE}ios-fastlane-match`;
 const SUBMIT_DOCS = `${DOCS_BASE}ios-credentials-for-submit`;
@@ -85,11 +86,19 @@ export const signingChecks: CheckDef[] = [
     applies: async (ctx) => !!(await iosConfig(ctx)),
     async run(ctx) {
       if (ctx.env.MATCH_PASSWORD) return { status: "pass", detail: "set" };
-      const fix = "export MATCH_PASSWORD=<the password you chose for the certificates repo>";
-      if (ctx.nonInteractive) {
-        return { status: "fail", detail: "not set, and --non-interactive cannot ask for it", fix, docs: MATCH_DOCS };
+      // fastlane match reads its passphrase from the macOS keychain item "match_<git url>" when the
+      // variable is missing; the Matchfile (written from the config) decides which URL it uses
+      const ios = await iosConfig(ctx);
+      const url = ios?.matchGitUrl || ctx.env.MATCH_GIT_URL;
+      if (url && (await hasMatchPasswordInKeychain(url))) {
+        return { status: "pass", detail: "found in the macOS keychain (where fastlane match looks for it)" };
       }
-      return { status: "warn", detail: "not set; the build will ask for it", fix, docs: MATCH_DOCS };
+      const fix =
+        "Local: run `rn-shipyard init --platform ios` and answer Y to save the password in the macOS keychain (or export MATCH_PASSWORD=<the password you chose for the certificates repo>). CI: set MATCH_PASSWORD";
+      if (ctx.nonInteractive) {
+        return { status: "fail", detail: "not set, not in the macOS keychain, and --non-interactive cannot ask for it", fix, docs: MATCH_DOCS };
+      }
+      return { status: "warn", detail: "not set and not in the macOS keychain; the build will ask for it", fix, docs: MATCH_DOCS };
     },
   },
   {

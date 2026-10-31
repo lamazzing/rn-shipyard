@@ -1,6 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { ShipyardError } from "../utils/errors.js";
+import { easDownloadMenuPath } from "./eas-download.js";
 
 /**
  * Reader for the credentials.json that `eas credentials` writes ("Download credentials from EAS
@@ -36,8 +37,7 @@ export interface EasCredentials {
   ios?: EasIosTargetCredentials[];
 }
 
-export const EAS_DOWNLOAD_FIX =
-  'Run `npx eas-cli credentials`, choose the platform, then "credentials.json: Upload/Download credentials between EAS servers and your local json" and "Download credentials from EAS to credentials.json". Run it in your project folder, then re-run this command (or pass the file path: --from-eas <path>)';
+export const EAS_DOWNLOAD_FIX = `${easDownloadMenuPath()}. There is no non-interactive download in eas-cli. Then re-run this command (or pass the file path: --from-eas <path>)`;
 
 function invalid(file: string, detail: string): ShipyardError {
   return new ShipyardError(

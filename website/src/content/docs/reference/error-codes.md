@@ -35,6 +35,8 @@ The Fix column is the fix text the tool prints, shortened to one line. The `--js
 | `MATCH_REPO_AUTH_FAILED` | 1 | The pre-clone of the Match repo before an iOS build failed | Load your key into ssh-agent (`ssh-add --apple-use-keychain ~/.ssh/id_ed25519`) or configure a git credential helper; or run without `--non-interactive` to be prompted |
 | `APPLE_LOGIN_FAILED` | 1 | The Apple ID login step before the submit failed (or the Fastfile lacks the login lane) | Check your Apple ID and password, then run `submit` again; or use an App Store Connect API key |
 | `FASTLANE_NOT_FOUND` | 1 | Fastlane is not installed | Install Fastlane: `gem install fastlane` (`doctor` suggests `brew install fastlane`) |
+| `ASC_KEY_INVALID` | 1 | `init`: App Store Connect rejected the API key (401: wrong key id, issuer id or a revoked key), or the `.p8` is unreadable or not an EC key | Check key id, issuer id and the `.p8` in App Store Connect > Users and Access > Integrations > App Store Connect API |
+| `ASC_KEY_FORBIDDEN` | 1 | `init`: the API key is valid but its role cannot read apps (403) | Create a key with the App Manager or Admin role |
 | `XCWORKSPACE_NOT_FOUND` | 1 | No `.xcworkspace` in `ios/` | Run `npx expo prebuild --platform ios` and check that CocoaPods installed |
 | `XCWORKSPACE_AMBIGUOUS` | 1 | More than one `.xcworkspace` in `ios/` | Keep exactly one workspace in `ios/` (delete stale ones), then build again |
 
@@ -42,14 +44,14 @@ The Fix column is the fix text the tool prints, shortened to one line. The `--js
 
 | Code | Exit | Meaning | Fix |
 |---|---|---|---|
-| `EAS_CREDENTIALS_NOT_FOUND` | 2 | No `credentials.json` at the path | Run `npx eas-cli credentials`, choose the platform, then "credentials.json: Upload/Download credentials between EAS servers and your local json" and "Download credentials from EAS to credentials.json" |
+| `EAS_CREDENTIALS_NOT_FOUND` | 2 | No `credentials.json` at the path | Run `npx eas-cli credentials -p <ios\|android>`; iOS: answer n to "Do you want to log in to your Apple account?"; choose "credentials.json: Upload/Download credentials between EAS servers and your local json", then "Download credentials from EAS to credentials.json". In a terminal `init --from-eas` offers to run it for you |
 | `EAS_CREDENTIALS_INVALID` | 1 | The file is not valid JSON, lacks a required field, has no section for the requested platform, or `--platform` asked for a platform it does not contain | Download it again with `eas credentials`; do not edit it by hand |
 | `EAS_KEYSTORE_INVALID` | 1 | The keystore file is missing, `keytool` cannot open it with the stored password, the key alias does not exist, or the key password is wrong | Download the credentials again; the keystore and `credentials.json` must come from the same download |
 | `EAS_KEYSTORE_EXISTS` | 1 | A different keystore is already at `~/.config/rn-shipyard/<slug>/release.keystore` and was not overwritten (non-interactive, or you answered no) | Move it yourself (it may be your only copy), or run in a terminal to be asked; a replaced file is kept as `.bak-<time>` |
 | `EAS_IOS_EXTRACT_FAILED` | 1 | `openssl` could not read the distribution certificate with its password, is not installed, or a certificate or profile file is missing | Download the credentials again; make sure `openssl` is on `PATH` |
 | `EAS_IOS_IMPORT_FAILED` | 1 | `fastlane match import` failed (git access, Apple login, `MATCH_PASSWORD`, certificate not found in your developer account), or the Fastfile lacks the import lane | Fix the problem in the output and re-run (the import is safe to repeat); run `init` without `--non-interactive`, or set an App Store Connect API key |
 
-`MISSING_CONFIG_IOS` also exits `2` here when `MATCH_PASSWORD`, `MATCH_GIT_URL` or `APPLE_TEAM_ID` is missing in non-interactive mode.
+`MISSING_CONFIG_IOS` also exits `2` here when `MATCH_PASSWORD` (and no Match passphrase in the macOS keychain), `MATCH_GIT_URL` or `APPLE_TEAM_ID` is missing in non-interactive mode.
 
 ## Android
 

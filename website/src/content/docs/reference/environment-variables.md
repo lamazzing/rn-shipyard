@@ -10,7 +10,7 @@ Secrets belong in the environment, not in files in your repo. Variables marked "
 | Variable | Used for | Redacted |
 |---|---|---|
 | `MATCH_GIT_URL` | Match repo URL (iOS signing, `init`). Must not contain credentials | password or token inside the URL, if any |
-| `MATCH_PASSWORD` | Match encryption password | yes |
+| `MATCH_PASSWORD` | Match encryption password. CI sets it. Locally it is optional: when unset, fastlane match (and rn-shipyard's checks) use the macOS keychain item `match_<git url>`, which `init` can save for you | yes |
 | `APPLE_TEAM_ID` | Apple Developer Team ID | no |
 | `MATCH_GIT_BASIC_AUTHORIZATION` | base64 of `user:token` for an HTTPS Match repo | yes, and the decoded value |
 | `MATCH_GIT_BEARER_AUTHORIZATION` | Bearer token for the Match repo | yes |

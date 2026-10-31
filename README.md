@@ -155,7 +155,7 @@ rn-shipyard init --platform android \
 
 `--android-last-version-code` seeds the counter so rn-shipyard never reuses a code you already shipped.
 
-**Import your EAS signing credentials in one step** (no new iOS certificate, same Android upload key). Download them with `npx eas-cli credentials` (pick the platform, then "credentials.json: Upload/Download credentials between EAS servers and your local json", then "Download credentials from EAS to credentials.json"), then:
+**Import your EAS signing credentials in one step** (no new iOS certificate, same Android upload key). In a terminal, `init --from-eas` offers to run `npx eas-cli credentials -p <platform>` for you and prints the answers first (there is no non-interactive download in eas-cli): answer **n** to "Do you want to log in to your Apple account?" (the download only reads Expo's servers), choose "credentials.json: Upload/Download credentials between EAS servers and your local json", then "Download credentials from EAS to credentials.json", then Go back and Exit. Or do it yourself first, then:
 
 ```bash
 rn-shipyard init --from-eas          # reads ./credentials.json; or --from-eas path/to/credentials.json
@@ -190,7 +190,9 @@ Each result is `✓` (fine), `!` (warning, will not stop a build) or `✗` (bloc
 
 Interactive (readline prompts) in a terminal. With `--non-interactive`, `--json` or a non-TTY stdin it never prompts: values come from environment variables and your Expo config, and a missing value exits `2`. Password prompts never echo.
 
-- **iOS:** asks for bundle identifier, Apple Team ID and Match Git URL (defaults from your config, `APPLE_TEAM_ID`, `MATCH_GIT_URL`). With `MATCH_PASSWORD` set it runs `fastlane match appstore`; otherwise it tells you to run it later.
+- **One platform at a time is safe:** `init --platform ios` merges into an existing `.shipyard/config.json` (the Android block, `version-code.json` and `history.json` stay untouched) and regenerates `fastlane/` for every configured platform. Re-running it for the same platform replaces only that block; its defaults come from the existing config.
+- **iOS:** asks for bundle identifier, Apple Team ID and Match Git URL (defaults from your config, `APPLE_TEAM_ID`, `MATCH_GIT_URL`). The Match password comes from `MATCH_PASSWORD` (CI) or from the macOS keychain item fastlane match itself reads (`match_<git url>`); in a terminal `init` offers to save it there (macOS asks for it, it never touches the command line). It then runs `fastlane match appstore`. With neither, it skips Match and the summary and `--json` (`setup.ios.status: "skipped"`) say so, with the next step.
+- **App Store Connect key check:** when an API key is configured (`APP_STORE_CONNECT_API_KEY_*` / `EXPO_ASC_*` / `ascApiKey*` in `eas.json`), `init` makes one read-only call to App Store Connect (`GET /v1/apps?filter[bundleId]=...`) with a short-lived JWT. A wrong key fails with `ASC_KEY_INVALID` (401), a role that is too low with `ASC_KEY_FORBIDDEN` (403, use App Manager or Admin); a missing app record or no network is only a warning.
 - **Match URL:** it is committed in `.shipyard/config.json` and `fastlane/Matchfile`, so it must not contain credentials. `https://x-access-token:TOKEN@github.com/...` is rejected (`INVALID_MATCH_GIT_URL`). Use `git@github.com:org/certs.git`, or a plain `https://` URL plus `MATCH_GIT_BASIC_AUTHORIZATION`.
 - **Android:** generates `.shipyard/android/release.keystore` with `keytool`, or adopts the keystore you pass.
 - Writes `.shipyard/config.json`, `fastlane/Fastfile`, `Appfile` (and `Matchfile`), and appends keystore and artifact patterns to your `.gitignore`.
@@ -279,7 +281,7 @@ Shows builds and submits from `.shipyard/history.json` as a table. The table is 
 rn-shipyard uses Match with type `appstore`. You need a private Git repo to hold the encrypted certificates and profiles.
 
 1. Create the private repo and export its URL: `export MATCH_GIT_URL=git@github.com:you/certs.git`.
-2. Choose an encryption password: `export MATCH_PASSWORD=...` and `export APPLE_TEAM_ID=...`.
+2. Choose an encryption password and `export APPLE_TEAM_ID=...`. Locally, `init` offers to save the password in the macOS keychain (fastlane match reads it there, so no `MATCH_PASSWORD` in every shell); in CI export `MATCH_PASSWORD=...`.
 3. Run `rn-shipyard init --platform ios`. It runs `fastlane match appstore` and writes the Matchfile. In a terminal, Match runs in the foreground, so Apple ID password, 2FA and git/ssh prompts work normally.
 4. For `submit`, provide App Store Connect credentials, see below.
 
@@ -327,7 +329,7 @@ More: [Android credentials](https://lamazzing.github.io/rn-shipyard/guides/andro
 
 | Variable | Used for |
 |---|---|
-| `MATCH_PASSWORD`, `MATCH_GIT_URL`, `APPLE_TEAM_ID` | iOS signing (`init`) |
+| `MATCH_PASSWORD`, `MATCH_GIT_URL`, `APPLE_TEAM_ID` | iOS signing (`init`). `MATCH_PASSWORD` is optional locally: the macOS keychain item `match_<git url>` is used when it is unset |
 | `EXPO_ASC_KEY_ID`, `EXPO_ASC_ISSUER_ID`, `EXPO_ASC_API_KEY_PATH` | iOS submit (API key), EAS names; alias of the next row |
 | `APP_STORE_CONNECT_API_KEY_KEY_ID`, `_ISSUER_ID`, `_KEY` or `_KEY_FILEPATH` | iOS submit (API key), Fastlane names |
 | `EXPO_APPLE_ID`, `EXPO_APPLE_PASSWORD`, `EXPO_APPLE_APP_SPECIFIC_PASSWORD`, `EXPO_APPLE_TEAM_ID` | iOS submit / signing (Apple ID), EAS names; aliases of `FASTLANE_USER`, `FASTLANE_PASSWORD`, `FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD`, `FASTLANE_TEAM_ID` |
@@ -394,7 +396,7 @@ More: [JSON and exit codes](https://lamazzing.github.io/rn-shipyard/reference/js
 
 - **`doctor` fails on Ruby:** `brew install fastlane`. It brings its own Ruby and the system Ruby is then ignored.
 - **`Project not initialized` (exit 2):** run `rn-shipyard init` in the project root.
-- **Match setup skipped:** set `MATCH_PASSWORD` and re-run `init --platform ios`, or run `fastlane match appstore` yourself.
+- **Match setup skipped:** the summary says so. Set `MATCH_PASSWORD` (or run `init` in a terminal and save the password in the keychain) and re-run `init --platform ios`; it keeps your Android setup.
 - **`VERSION_CODE_REUSED`:** pass a `--version-code` greater than the reported value, or omit the flag.
 - **`BUILD_NUMBER_REUSED`:** pass a `--build-number` greater than the reported value, or omit the flag.
 - **`FASTFILE_OUTDATED`:** your `fastlane/Fastfile` came from an older rn-shipyard (no iOS signing step). Run `rn-shipyard init` again.
