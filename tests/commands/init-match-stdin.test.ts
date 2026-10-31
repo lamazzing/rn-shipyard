@@ -48,6 +48,7 @@ beforeEach(async () => {
   );
   process.chdir(dir);
   process.env.MATCH_PASSWORD = "matchpw";
+  process.env.FASTLANE_USER = "me@example.com";
   Object.defineProperty(process.stdin, "isTTY", { value: true, configurable: true });
   Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
   vi.spyOn(console, "log").mockImplementation(() => {});
@@ -58,6 +59,7 @@ afterEach(() => {
   process.chdir(cwd);
   vi.restoreAllMocks();
   delete process.env.MATCH_PASSWORD;
+  delete process.env.FASTLANE_USER;
   delete (process.stdin as { isTTY?: boolean }).isTTY;
   delete (process.stdout as { isTTY?: boolean }).isTTY;
 });
@@ -78,8 +80,9 @@ describe("interactive init and fastlane match (stdin ownership)", () => {
     expect(i("open1")).toBeLessThan(i("match-start"));
     expect(i("close1")).toBeGreaterThan(i("match-start")); // released by the exec hook...
     expect(i("close1")).toBeLessThan(i("match-end")); //      ...before the child would run
-    expect(events).toContain("open2"); // the Android questions got a fresh prompter
-    expect(i("open2")).toBeGreaterThan(i("match-end"));
+    // Match runs after all questions (it needs the Fastfile that is written last): one prompter
+    // served iOS and Android, and the exec hook released it before the child inherited stdin
+    expect(events.filter((e) => e.startsWith("open"))).toEqual(["open1"]);
   });
 
   it("--non-interactive passes interactive:false to match", async () => {

@@ -1,4 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from "vitest";
+import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 vi.mock("../../src/utils/shell.js", async () => {
   const actual = await vi.importActual<typeof import("../../src/utils/shell.js")>("../../src/utils/shell.js");
@@ -7,7 +10,14 @@ vi.mock("../../src/utils/shell.js", async () => {
 import { exec } from "../../src/utils/shell.js";
 import { setupMatch } from "../../src/platforms/ios/signing.js";
 
-const base = { gitUrl: "g", teamId: "T", bundleId: "b", password: "p", projectDir: "/p", stream: true };
+let projectDir = "";
+const base = { gitUrl: "g", teamId: "T", bundleId: "b", password: "p", get projectDir() { return projectDir; }, stream: true };
+beforeAll(async () => {
+  projectDir = await mkdtemp(join(tmpdir(), "shipyard-signing-"));
+  await mkdir(join(projectDir, "fastlane"));
+  await writeFile(join(projectDir, "fastlane", "Fastfile"), "platform :ios do\n  lane :shipyard_match_setup do\n  end\nend\n");
+});
+afterAll(() => rm(projectDir, { recursive: true, force: true }));
 beforeEach(() => vi.clearAllMocks());
 
 describe("init's fastlane match", () => {
@@ -45,5 +55,23 @@ describe("init's fastlane match", () => {
     }
     const call = vi.mocked(exec).mock.calls.find((c) => c[0] === "fastlane")!;
     expect(call[2]!.env!.GIT_SSH_COMMAND).toBe("ssh -i /my/key -o BatchMode=yes -o ConnectTimeout=15");
+  });
+
+  it("runs the generated lane (no `match appstore`, which asks for an Apple ID) and passes only the key variables", async () => {
+    await setupMatch({ ...base, interactive: false, ascKeyEnv: { APP_STORE_CONNECT_API_KEY_KEY_ID: "K", APP_STORE_CONNECT_API_KEY_KEY_FILEPATH: "/abs/k.p8" } });
+    const call = vi.mocked(exec).mock.calls.find((c) => c[0] === "fastlane")!;
+    expect(call[1]).toEqual(["ios", "shipyard_match_setup"]);
+    expect(call[2]!.env).toMatchObject({ APP_STORE_CONNECT_API_KEY_KEY_ID: "K", APP_STORE_CONNECT_API_KEY_KEY_FILEPATH: "/abs/k.p8", MATCH_PASSWORD: "p" });
+  });
+  it("a Fastfile without the lane is reported like an outdated build Fastfile", async () => {
+    const old = await mkdtemp(join(tmpdir(), "shipyard-oldff-"));
+    await mkdir(join(old, "fastlane"));
+    await writeFile(join(old, "fastlane", "Fastfile"), "platform :ios do\nend\n");
+    try {
+      await expect(setupMatch({ ...base, projectDir: old, interactive: false })).rejects.toMatchObject({ code: "FASTFILE_OUTDATED" });
+      expect(exec).not.toHaveBeenCalled();
+    } finally {
+      await rm(old, { recursive: true, force: true });
+    }
   });
 });

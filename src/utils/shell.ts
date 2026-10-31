@@ -38,6 +38,12 @@ export interface ExecOptions {
    * stdin ignored and NON_INTERACTIVE_ENV set, so a prompting tool fails fast instead of hanging.
    */
   foreground?: boolean;
+  /**
+   * Text written to the child's stdin, then stdin is closed (piped children only). For a secret
+   * that must not appear in argv (visible in `ps`). Never logged; add it to `redact` when the
+   * child might echo it.
+   */
+  input?: string;
 }
 
 /** Environment that makes fastlane/spaceship/expo fail instead of prompt. */
@@ -448,10 +454,14 @@ export async function exec(
     const child = spawn(cmd, args, {
       cwd: opts.cwd,
       env,
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: [opts.input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
       timeout: opts.timeout,
       detached: opts.detached === true,
     });
+    if (opts.input !== undefined && child.stdin) {
+      child.stdin.on("error", () => {}); // the child may exit before reading (EPIPE): its exit code tells
+      child.stdin.end(opts.input);
+    }
     const entry: ActiveChild = { child, detached: opts.detached === true, exited: false };
     active.add(entry);
     child.on("exit", () => {

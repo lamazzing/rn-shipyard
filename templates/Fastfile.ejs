@@ -131,6 +131,37 @@ platform :ios do
     UI.success("Logged in to App Store Connect as " + user)
   end
 
+  desc "Create or fetch the signing certificate and profile with Match (run by rn-shipyard init)"
+  lane :shipyard_match_setup do
+    # With an App Store Connect API key (APP_STORE_CONNECT_API_KEY_* in the environment) match
+    # signs in with it instead of asking for an Apple ID: app_store_connect_api_key puts the key
+    # in the lane context, which match reads. The private key is never copied to a new file.
+    # fastlane runs a lane BODY with the working directory set to fastlane/, so a relative key
+    # path is expanded against the project root.
+    root = File.expand_path("..", FastlaneCore::FastlaneFolder.path)
+    key_id = ENV["APP_STORE_CONNECT_API_KEY_KEY_ID"].to_s
+    issuer_id = ENV["APP_STORE_CONNECT_API_KEY_ISSUER_ID"].to_s
+    key_path = ENV["APP_STORE_CONNECT_API_KEY_KEY_FILEPATH"].to_s
+    key_content = ENV["APP_STORE_CONNECT_API_KEY_KEY"].to_s
+    match_options = {
+      type: <%- rb(ios.matchType) %>,
+      readonly: false,
+      app_identifier: <%- rb(ios.bundleId) %>,
+      team_id: <%- rb(ios.teamId) %>
+    }
+    if !key_id.empty? && !issuer_id.empty? && (!key_path.empty? || !key_content.empty?)
+      if key_path.empty?
+        match_options[:api_key] = app_store_connect_api_key # reads the key content from the environment
+      else
+        match_options[:api_key] = app_store_connect_api_key(key_id: key_id, issuer_id: issuer_id, key_filepath: File.expand_path(key_path, root))
+      end
+      UI.message("SHIPYARD_MATCH_AUTH=api_key")
+    else
+      UI.message("SHIPYARD_MATCH_AUTH=apple_id")
+    end
+    match(match_options)
+  end
+
   desc "Import EAS certificate + provisioning profile(s) into the Match repo (run by rn-shipyard init --from-eas)"
   lane :shipyard_match_import do
     require "json"

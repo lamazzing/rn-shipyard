@@ -18,11 +18,12 @@ export APPLE_TEAM_ID=ABCDE12345
 rn-shipyard init --platform ios
 ```
 
-`init` writes the URL into `.shipyard/config.json` and `fastlane/Matchfile`, then runs `fastlane match appstore`. Running it for iOS never touches your Android setup. Without a Match password it skips that step, and the summary says "Match signing NOT set up" with the next step. Run it later with `rn-shipyard init --platform ios` after exporting the password.
+`init` writes the URL into `.shipyard/config.json` and `fastlane/Matchfile`, then runs Match through the internal lane `shipyard_match_setup` (it signs in with your App Store Connect API key when one is configured, else Match asks for an Apple ID; the key file is read in place and never copied). Non-interactive with neither, `init` stops before fastlane with `setup.ios.errorCode: "MATCH_AUTH_MISSING"`: configure the key or set `FASTLANE_USER`. Running it for iOS never touches your Android setup. Without a Match password it skips that step, and the summary says "Match signing NOT set up" with the next step. Run it later with `rn-shipyard init --platform ios` after exporting the password.
 
 ## Where the Match password lives
 
 - **Locally (macOS):** the keychain. fastlane match reads its passphrase from `MATCH_PASSWORD`, else from the keychain item with server `match_<git url>`. In a terminal, `init` offers to save it there: it runs `security add-internet-password -s match_<git url> -U -w`, and macOS's `security` asks for the password on your terminal (it never appears in a command line or in rn-shipyard's output). From then on you do not export `MATCH_PASSWORD` for builds, and `doctor` and the build pre-flight accept the keychain item (they only check that it exists, never read it).
+- **Without a terminal:** `MATCH_PASSWORD=... rn-shipyard init --platform ios --save-match-password` saves the value from the environment in the same item (the password goes to `security -i` on stdin, never into a command line). It works with `--non-interactive`; in a terminal it answers the offer with yes. Unset or empty `MATCH_PASSWORD` fails with `MATCH_PASSWORD_MISSING`.
 - **CI and `--non-interactive`:** the environment variable `MATCH_PASSWORD` (a CI secret). A CI runner has no keychain item.
 - A wrong password saved in the keychain makes match fail to decrypt; delete it with `security delete-internet-password -s "match_<git url>"` and run `init` again.
 

@@ -22,11 +22,18 @@ function rmArg(display: string): string {
   return display.startsWith("~/") ? `~/${quote(display.slice(2))}` : quote(display);
 }
 
-async function gitState(projectDir: string, rel: string): Promise<"tracked" | "unignored" | "ignored" | "unknown"> {
-  const run = (args: string[]) => tryExec("git", args, { cwd: projectDir, env: { GIT_LITERAL_PATHSPECS: "1" } });
-  const tracked = await run(["ls-files", "--error-unmatch", "--", rel]);
+/**
+ * Git state of a path relative to projectDir. git resolves relative paths against its cwd, so an
+ * app in a subfolder of the repository works. GIT_LITERAL_PATHSPECS is set for ls-files only:
+ * `git check-ignore` refuses to run with it ("pathspec magic not supported by this command"),
+ * which made every git-ignored file read as "no git info".
+ */
+export async function gitState(projectDir: string, rel: string): Promise<"tracked" | "unignored" | "ignored" | "unknown"> {
+  const run = (args: string[], env?: Record<string, string>) => tryExec("git", args, { cwd: projectDir, env });
+  const tracked = await run(["ls-files", "--error-unmatch", "--", rel], { GIT_LITERAL_PATHSPECS: "1" });
   if (tracked?.exitCode === 0) return "tracked";
-  const ignored = await run(["check-ignore", "-q", "--", rel]);
+  // "./" keeps a name that starts with ":" from being read as pathspec magic
+  const ignored = await run(["check-ignore", "-q", "--", `./${rel}`]);
   if (ignored?.exitCode === 0) return "ignored";
   if (ignored?.exitCode === 1) return "unignored";
   return "unknown"; // not a repo, or git missing

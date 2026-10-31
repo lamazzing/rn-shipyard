@@ -16,12 +16,12 @@ import { safeUrl } from "../platforms/ios/match-repo.js";
 import { createPrompter, type Prompter } from "../utils/prompt.js";
 import { exec, registerStdinReleaser } from "../utils/shell.js";
 import { isInteractive } from "../utils/interactive.js";
-import { applyExpoEnvAliases, applyEasSubmitIos } from "../utils/apple-env.js";
+import { applyExpoEnvAliases, applyEasSubmitIos, hasAscApiKey, pickAscKeyEnv } from "../utils/apple-env.js";
 import { runPreflight } from "./preflight.js";
 import { collectSecrets } from "../utils/secrets.js";
 import { readEasCredentials, type EasCredentials } from "../core/eas-credentials.js";
 import { importAndroidKeystore, type AndroidEasImport } from "../platforms/android/eas-import.js";
-import { hasMatchPasswordInKeychain, storeMatchPasswordInKeychain } from "../platforms/ios/match-keychain.js";
+import { hasMatchPasswordInKeychain, storeMatchPasswordInKeychain, storeMatchPasswordValueInKeychain } from "../platforms/ios/match-keychain.js";
 import { checkAscApiKey, type AscKeyCheck } from "../platforms/ios/asc-check.js";
 import { easDownloadGuide, runEasCredentialsDownload, type EasPlatform } from "../core/eas-download.js";
 import { importIosCredentials, type IosEasImport, type IosEasImportOptions } from "../platforms/ios/eas-import.js";
@@ -38,6 +38,8 @@ export interface InitOptions {
   androidLastVersionCode?: string;
   /** Import the signing credentials `eas credentials` downloaded: true = ./credentials.json, or a path */
   fromEas?: string | boolean;
+  /** Save MATCH_PASSWORD from the environment in the macOS keychain item fastlane match reads */
+  saveMatchPassword?: boolean;
 }
 
 interface AndroidCredentialsFile {
@@ -54,6 +56,12 @@ interface IosSetupOutcome {
   reason?: string;
   nextStep?: string;
   ascKey?: AscKeyCheck;
+  /** How Match signed in to Apple (only when it ran) */
+  matchAuth?: "api-key" | "apple-id";
+  /** Machine-readable cause when status is "failed" */
+  errorCode?: string;
+  /** Result of --save-match-password */
+  keychain?: "saved";
 }
 
 const nonEmpty = (v: unknown): v is string => typeof v === "string" && v.trim() !== "";
@@ -457,8 +465,23 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
 
   // --- iOS Setup ---
   let iosImportPlan: Omit<IosEasImportOptions, "projectDir" | "interactive" | "stream"> | undefined;
+  // Match setup runs after the Fastfile (which has its lane) is written; set in the iOS block below
+  let runMatchSetup: (() => Promise<void>) | undefined;
+  if (opts.saveMatchPassword && !doIos) {
+    logger.warn("--save-match-password only applies to iOS and is ignored for this platform");
+  }
   if (doIos) {
     logger.info("Setting up iOS...");
+    if (opts.saveMatchPassword && !process.env.MATCH_PASSWORD) {
+      return fail(
+        new ShipyardError(
+          "MATCH_PASSWORD_MISSING",
+          "--save-match-password needs MATCH_PASSWORD in the environment, and it is unset or empty",
+          "Run: MATCH_PASSWORD=<the Match repo passphrase> rn-shipyard init --platform ios --save-match-password (choose a passphrase if the Match repo is new)"
+        ),
+        1
+      );
+    }
 
     const easIos = easConfig?.submit?.production?.ios;
     const defaultTeamId = easIos?.appleTeamId ?? process.env.APPLE_TEAM_ID ?? previousIos?.teamId ?? "";
@@ -531,6 +554,24 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
     // fastlane match itself reads ("match_<git url>"), else (interactive) offer to save it there.
     let passwordSource: IosSetupOutcome["passwordSource"];
     let password = process.env.MATCH_PASSWORD || undefined;
+    let keychain: Pick<IosSetupOutcome, "keychain"> = {};
+    if (opts.saveMatchPassword && password) {
+      // The flag answers the offer below with yes, interactive or not: the value comes from the
+      // environment, nothing is asked. It goes to `security` on stdin, never into argv or a log.
+      const stored = await storeMatchPasswordValueInKeychain(matchGitUrl, password);
+      if (!stored.success) {
+        return fail(
+          new ShipyardError(
+            "KEYCHAIN_SAVE_FAILED",
+            `Could not save the Match password in the macOS keychain: ${stored.error ?? "unknown error"}`,
+            "Run this on a Mac with a logged-in keychain (security needs the login keychain to be unlocked), or drop --save-match-password and keep MATCH_PASSWORD in the environment"
+          ),
+          1
+        );
+      }
+      keychain = { keychain: "saved" };
+      logger.success("Saved the Match password in the macOS keychain (fastlane match reads it from there)");
+    }
     if (password) passwordSource = "env";
     else if (await hasMatchPasswordInKeychain(matchGitUrl)) {
       passwordSource = "keychain";
@@ -576,30 +617,51 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
         );
       }
       iosImportPlan = { targets: easCreds.ios, gitUrl: matchGitUrl, teamId, bundleId, matchPassword: password };
-      iosOutcome = { status: "imported", passwordSource, ascKey };
+      iosOutcome = { status: "imported", passwordSource, ascKey, ...keychain };
     } else if (passwordSource) {
-      logger.info("Running Fastlane Match to set up code signing...");
-      const matchResult = await setupMatch({
-        gitUrl: matchGitUrl,
-        teamId,
-        bundleId,
-        password,
-        projectDir,
-        stream: !opts.json,
-        interactive,
-      });
-      if (matchResult.success) {
-        logger.success("iOS code signing configured");
-        iosOutcome = { status: "configured", passwordSource, ascKey };
+      const ascKeyEnv = hasAscApiKey(ascEnv) ? pickAscKeyEnv(ascEnv) : undefined;
+      const matchAuth: IosSetupOutcome["matchAuth"] = ascKeyEnv ? "api-key" : "apple-id";
+      const appleIdKnown = !!(process.env.FASTLANE_USER || (easIos as { appleId?: string } | undefined)?.appleId);
+      if (!interactive && !ascKeyEnv && !appleIdKnown) {
+        // Without a key match asks for an Apple ID; a piped run cannot answer, so say so before fastlane starts
+        const reason =
+          "Match needs to sign in to Apple, and neither an App Store Connect API key nor an Apple ID (FASTLANE_USER) is available in non-interactive mode";
+        const nextStep =
+          "Add an App Store Connect API key (EXPO_ASC_API_KEY_PATH, EXPO_ASC_KEY_ID and EXPO_ASC_ISSUER_ID, or ascApiKeyPath / ascApiKeyId / ascApiKeyIssuerId in eas.json submit.production.ios) or set FASTLANE_USER, then run: rn-shipyard init --platform ios --non-interactive";
+        logger.warn(`Match setup skipped: ${reason}`);
+        logger.info(`Fix: ${nextStep}`);
+        iosOutcome = { status: "failed", passwordSource, reason, nextStep, errorCode: "MATCH_AUTH_MISSING", ascKey, ...keychain };
       } else {
-        logger.warn(`Match setup failed: ${matchResult.error}`);
-        logger.info("Fix the problem above and run 'rn-shipyard init --platform ios' again (or 'fastlane match appstore')");
-        iosOutcome = {
-          status: "failed",
-          passwordSource,
-          reason: String(matchResult.error ?? "Match setup failed").slice(0, 300),
-          nextStep: "Fix the Match error above, then run: rn-shipyard init --platform ios",
-          ascKey,
+        runMatchSetup = async () => {
+          logger.info(
+            `Running Fastlane Match to set up code signing (${matchAuth === "api-key" ? "signing in with the App Store Connect API key" : "signing in with an Apple ID"})...`
+          );
+          const matchResult = await setupMatch({
+            gitUrl: matchGitUrl,
+            teamId,
+            bundleId,
+            password,
+            projectDir,
+            stream: !opts.json,
+            interactive,
+            ascKeyEnv,
+          });
+          if (matchResult.success) {
+            logger.success("iOS code signing configured");
+            iosOutcome = { status: "configured", passwordSource, ascKey, matchAuth, ...keychain };
+          } else {
+            logger.warn(`Match setup failed: ${matchResult.error}`);
+            logger.info("Fix the problem above and run 'rn-shipyard init --platform ios' again");
+            iosOutcome = {
+              status: "failed",
+              passwordSource,
+              reason: String(matchResult.error ?? "Match setup failed").slice(0, 300),
+              nextStep: "Fix the Match error above, then run: rn-shipyard init --platform ios",
+              ascKey,
+              matchAuth,
+              ...keychain,
+            };
+          }
         };
       }
     } else {
@@ -782,6 +844,9 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
   await generateAll(projectDir, config, appConfig.name, appleId, packageName);
   logger.success("Generated fastlane/ files");
 
+  // --- iOS, no --from-eas: create or fetch the certificate and profile with Match (lane in the Fastfile just written) ---
+  if (runMatchSetup) await runMatchSetup();
+
   // --- --from-eas, iOS: import into the Match repo (pushes to it; may prompt on the terminal).
   // Before .shipyard/config.json is written, so a failed or interrupted import leaves no config behind. ---
   let iosImport: IosEasImport | undefined;
@@ -848,6 +913,9 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
                 ...(iosOutcome.reason ? { reason: iosOutcome.reason } : {}),
                 ...(iosOutcome.nextStep ? { nextStep: iosOutcome.nextStep } : {}),
                 ...(iosOutcome.ascKey ? { ascKey: iosOutcome.ascKey.status } : {}),
+                ...(iosOutcome.matchAuth ? { matchAuth: iosOutcome.matchAuth } : {}),
+                ...(iosOutcome.errorCode ? { errorCode: iosOutcome.errorCode } : {}),
+                ...(iosOutcome.keychain ? { matchPasswordKeychain: iosOutcome.keychain } : {}),
               },
             }
           : {}),
@@ -903,13 +971,17 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
     console.log("");
     if (iosOutcome) {
       if (iosOutcome.status === "configured") {
-        console.log(`  ${chalk.green("✓")} iOS: Match signing configured`);
+        const via = iosOutcome.matchAuth === "api-key" ? " (signed in with the App Store Connect API key)" : "";
+        console.log(`  ${chalk.green("✓")} iOS: Match signing configured${via}`);
       } else if (iosOutcome.status === "imported") {
         console.log(`  ${chalk.green("✓")} iOS: EAS certificate and profile imported into the Match repo`);
       } else if (iosOutcome.status === "skipped") {
         console.log(`  ${chalk.yellow("!")} iOS: config and fastlane files written, Match signing NOT set up (${iosOutcome.reason})`);
       } else {
-        console.log(`  ${chalk.red("✗")} iOS: config and fastlane files written, Match setup FAILED (see the error above)`);
+        console.log(`  ${chalk.red("✗")} iOS: config and fastlane files written, Match setup FAILED (${iosOutcome.errorCode ? iosOutcome.reason : "see the error above"})`);
+      }
+      if (iosOutcome.keychain === "saved") {
+        console.log(`  ${chalk.green("✓")} iOS: Match password saved in the macOS keychain`);
       }
     } else if (config.platforms.ios) {
       console.log(chalk.dim(`  - iOS: unchanged (kept from .shipyard/config.json)`));

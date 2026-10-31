@@ -133,6 +133,7 @@ describe("init --json warnings (item 8)", () => {
       expect(json.warnings).toEqual(expect.arrayContaining([expect.stringContaining("MATCH_PASSWORD not set")]));
     } finally {
       delete process.env.APPLE_TEAM_ID;
+      delete process.env.FASTLANE_USER;
     }
   });
 
@@ -140,6 +141,7 @@ describe("init --json warnings (item 8)", () => {
     process.env.APPLE_TEAM_ID = "TEAM";
     process.env.MATCH_GIT_URL = "git@github.com:o/r.git";
     process.env.MATCH_PASSWORD = "mpw";
+    process.env.FASTLANE_USER = "me@example.com";
     vi.mocked(setupMatch).mockResolvedValue({ success: false, error: "nope" });
     try {
       const { json } = await run({ platform: "ios" });
