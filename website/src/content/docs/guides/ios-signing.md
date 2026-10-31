@@ -28,7 +28,7 @@ rn-shipyard init --platform ios
 
 ## Check the App Store Connect key
 
-If you use an App Store Connect API key for `submit`, `init` verifies it with one read-only call (`GET /v1/apps` for your bundle ID). A key with a role that is too low (`ASC_KEY_FORBIDDEN`, needs App Manager or Admin) or a wrong key/issuer (`ASC_KEY_INVALID`) stops `init` instead of failing at your first submit. A missing app record only warns: create the app in App Store Connect first.
+If you use an App Store Connect API key for `submit`, `init` verifies it with one read-only call (`GET /v1/apps` for your bundle ID). A wrong key or issuer (`ASC_KEY_INVALID`) stops `init` instead of failing at your first submit. A role that is too low (it needs App Manager or Admin) and a missing app record only warn, since building does not need the key: fix them before you submit.
 
 ## Keep credentials out of the URL
 

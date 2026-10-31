@@ -36,6 +36,7 @@ export type AscKeyCheck =
   | { status: "ok"; detail: string }
   | { status: "app-not-found"; detail: string }
   | { status: "unreachable"; detail: string }
+  | { status: "forbidden"; detail: string }
   | { status: "skipped"; detail: string };
 
 export interface AscKeyCheckOptions {
@@ -71,8 +72,9 @@ async function readKeyPem(env: Record<string, string | undefined>): Promise<stri
 
 /**
  * Checks the App Store Connect API key from `env` (fastlane names). Returns "skipped" when no key
- * is configured. Throws ShipyardError ASC_KEY_INVALID (401, unreadable key) or ASC_KEY_FORBIDDEN
- * (403). A missing app record or a network problem is a result, not an error.
+ * is configured. Throws ShipyardError ASC_KEY_INVALID (401, unreadable key). A role that is too low
+ * (403), a missing app record or a network problem is a result, not an error: building does not
+ * need the key, so only submit would fail.
  */
 export async function checkAscApiKey(opts: AscKeyCheckOptions): Promise<AscKeyCheck> {
   const keyId = opts.env.APP_STORE_CONNECT_API_KEY_KEY_ID;
@@ -118,11 +120,10 @@ export async function checkAscApiKey(opts: AscKeyCheckOptions): Promise<AscKeyCh
     );
   }
   if (res.status === 403) {
-    throw new ShipyardError(
-      "ASC_KEY_FORBIDDEN",
-      `The App Store Connect API key ${keyId} is valid but its role is too low (403)`,
-      "Create a key with the App Manager or Admin role (Users and Access > Integrations > App Store Connect API), then point APP_STORE_CONNECT_API_KEY_* at it"
-    );
+    return {
+      status: "forbidden",
+      detail: `The App Store Connect API key ${keyId} is valid but its role cannot read apps (403), so submit will fail. Create a key with the App Manager or Admin role (Users and Access > Integrations > App Store Connect API) and point APP_STORE_CONNECT_API_KEY_* at it`,
+    };
   }
   if (res.status !== 200) {
     return { status: "unreachable", detail: `App Store Connect answered HTTP ${res.status}; the key was not checked` };

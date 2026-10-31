@@ -69,10 +69,10 @@ describe("checkAscApiKey", () => {
     await expect(checkAscApiKey({ env: env(), bundleId: "com.x.app", fetchImpl: (async () => res(401)) as never })).rejects.toMatchObject({ code: "ASC_KEY_INVALID" });
   });
 
-  it("403: ASC_KEY_FORBIDDEN, fix names the roles", async () => {
-    const err = await checkAscApiKey({ env: env(), bundleId: "com.x.app", fetchImpl: (async () => res(403)) as never }).catch((e) => e);
-    expect(err.code).toBe("ASC_KEY_FORBIDDEN");
-    expect(err.fix).toContain("App Manager or Admin");
+  it("403: a warning result (not an error) that names the roles", async () => {
+    const r = await checkAscApiKey({ env: env(), bundleId: "com.x.app", fetchImpl: (async () => res(403)) as never });
+    expect(r.status).toBe("forbidden");
+    expect(r.detail).toContain("App Manager or Admin");
   });
 
   it("network error and 5xx: unreachable, not a failure", async () => {

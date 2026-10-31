@@ -22,6 +22,7 @@ import { ShipyardError, exitCodeForError } from "../utils/errors.js";
 import { printJson } from "../core/output.js";
 import { runSubmit, appleLoginPhase, readIosAppleId, type AppleLoginOutcome } from "./submit.js";
 import { runPreflight } from "./preflight.js";
+import { noPlatformsError } from "./no-platforms.js";
 
 export interface BuildOptions {
   platform: string;
@@ -137,15 +138,12 @@ export default async function buildCmd(opts: BuildOptions): Promise<void> {
     config.platforms.android?.enabled === true;
 
   if (!doIos && !doAndroid) {
-    const err = new ShipyardError(
-      "NO_PLATFORMS",
-      "No platforms enabled for build",
-      "Run 'rn-shipyard init' with --platform to configure platforms"
-    );
+    const err = noPlatformsError("build", opts.platform);
     if (opts.json) {
       printJson(err.toJSON());
     } else {
       logger.error(err.message);
+      logger.info(`Fix: ${err.fix}`);
     }
     process.exit(1);
   }

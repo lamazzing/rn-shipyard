@@ -36,7 +36,6 @@ The Fix column is the fix text the tool prints, shortened to one line. The `--js
 | `APPLE_LOGIN_FAILED` | 1 | The Apple ID login step before the submit failed (or the Fastfile lacks the login lane) | Check your Apple ID and password, then run `submit` again; or use an App Store Connect API key |
 | `FASTLANE_NOT_FOUND` | 1 | Fastlane is not installed | Install Fastlane: `gem install fastlane` (`doctor` suggests `brew install fastlane`) |
 | `ASC_KEY_INVALID` | 1 | `init`: App Store Connect rejected the API key (401: wrong key id, issuer id or a revoked key), or the `.p8` is unreadable or not an EC key | Check key id, issuer id and the `.p8` in App Store Connect > Users and Access > Integrations > App Store Connect API |
-| `ASC_KEY_FORBIDDEN` | 1 | `init`: the API key is valid but its role cannot read apps (403) | Create a key with the App Manager or Admin role |
 | `XCWORKSPACE_NOT_FOUND` | 1 | No `.xcworkspace` in `ios/` | Run `npx expo prebuild --platform ios` and check that CocoaPods installed |
 | `XCWORKSPACE_AMBIGUOUS` | 1 | More than one `.xcworkspace` in `ios/` | Keep exactly one workspace in `ios/` (delete stale ones), then build again |
 

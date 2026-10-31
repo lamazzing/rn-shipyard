@@ -221,15 +221,14 @@ describe("init checks the App Store Connect API key", () => {
     for (const k of ["APP_STORE_CONNECT_API_KEY_KEY_ID", "APP_STORE_CONNECT_API_KEY_ISSUER_ID", "APP_STORE_CONNECT_API_KEY_KEY"]) delete process.env[k];
   });
 
-  it("403: ASC_KEY_FORBIDDEN, exit 1, nothing written, Match not started", async () => {
+  it("403: warns (builds don't need the key), setup continues, ascKey reported as forbidden", async () => {
     withKey();
     vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 403 })));
     const { code, json } = await run({ platform: "ios" });
-    expect(code).toBe(1);
-    expect(json).toMatchObject({ success: false, error: { code: "ASC_KEY_FORBIDDEN" } });
-    expect(json.error.fix).toContain("App Manager or Admin");
-    expect(setupMatch).not.toHaveBeenCalled();
-    await expect(readFile(join(dir, ".shipyard", "config.json"), "utf-8")).rejects.toThrow();
+    expect(code).toBe(0);
+    expect(json.setup.ios.ascKey).toBe("forbidden");
+    expect(setupMatch).toHaveBeenCalled();
+    await expect(readFile(join(dir, ".shipyard", "config.json"), "utf-8")).resolves.toContain('"ios"');
     expect(out.join("\n")).not.toContain("BEGIN PRIVATE KEY");
   });
 
