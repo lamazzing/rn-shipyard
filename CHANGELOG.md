@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0] - 2026-10-31
 
 ### Fixed
 - iOS build lane resolved the Xcode project against `fastlane/` (fastlane runs lane bodies there), so every build failed with "Xcode project not found". Paths are now absolute and resolved in a separate lane `shipyard_ios_resolve`, covered by a test against real fastlane.
