@@ -396,7 +396,7 @@ function execForeground(cmd: string, args: string[], opts: ExecOptions): Promise
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, {
       cwd: opts.cwd,
-      env: { ...process.env, ...opts.env },
+      env: childEnv({ ...process.env, ...opts.env }),
       stdio: "inherit",
       timeout: opts.timeout,
     });
@@ -424,6 +424,15 @@ function execForeground(cmd: string, args: string[], opts: ExecOptions): Promise
   });
 }
 
+/**
+ * An EMPTY MATCH_PASSWORD counts as unset for rn-shipyard, but Ruby sees "" as a value: match
+ * would encrypt with an empty passphrase instead of reading the keychain one. Drop it for every child.
+ */
+export function childEnv<T extends Record<string, string | undefined>>(env: T): T {
+  if (env.MATCH_PASSWORD === "") delete env.MATCH_PASSWORD;
+  return env;
+}
+
 export async function exec(
   cmd: string,
   args: string[],
@@ -432,7 +441,7 @@ export async function exec(
   // After a termination signal nothing new may start and nothing may resume.
   if (shuttingDown) return new Promise<ExecResult>(() => {});
   if (opts.foreground) return execForeground(cmd, args, opts);
-  const env = { ...process.env, ...NON_INTERACTIVE_ENV, ...opts.env };
+  const env = childEnv({ ...process.env, ...NON_INTERACTIVE_ENV, ...opts.env });
   // Env secrets are redacted by default, whatever the call site passes in `redact`.
   const secrets = collectSecrets(env, opts.redact);
   return new Promise((resolve, reject) => {

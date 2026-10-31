@@ -42,7 +42,7 @@ describe("iOS build lane", () => {
     expect(signing).toBeGreaterThan(match);
     expect(gym).toBeGreaterThan(signing);
     expect(f).toContain("use_automatic_signing: false");
-    expect(f).toContain("targets: [app_target.name]");
+    expect(f).toContain("targets: [app_target_name]");
     expect(f).toContain('team_id = "ABC123DEF4"');
     expect(f).toContain('bundle_id = "com.example.app"');
     expect(f).toContain("bundle_identifier: bundle_id");

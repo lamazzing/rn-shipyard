@@ -51,15 +51,9 @@ platform :ios do
     # shipyard-ios-signing: Xcode must be told the team and the Match profile, or the archive fails
     # with "Signing for <App> requires a development team". Manual signing is applied to the APP
     # target only (not Pods, not extensions), in the generated project, after match and before gym.
-    require "xcodeproj"
-    project_path = File.join(File.dirname(options[:workspace]), File.basename(options[:workspace], File.extname(options[:workspace])) + ".xcodeproj")
-    UI.user_error!("Xcode project not found next to the workspace: " + project_path) unless File.directory?(project_path)
-    project = Xcodeproj::Project.open(project_path)
-    app_targets = project.native_targets.select { |t| t.product_type == "com.apple.product-type.application" }
-    app_target = app_targets.find { |t| t.name == options[:scheme] }
-    app_target ||= app_targets.find { |t| t.build_configurations.any? { |c| c.build_settings["PRODUCT_BUNDLE_IDENTIFIER"] == bundle_id } }
-    app_target ||= app_targets.first if app_targets.length == 1
-    UI.user_error!("Could not tell which target is the app in " + project_path + " (application targets: " + app_targets.map(&:name).join(", ") + ")") if app_target.nil?
+    resolved = shipyard_ios_resolve(workspace: options[:workspace], scheme: options[:scheme], bundle_id: bundle_id)
+    project_path = resolved[:project_path]
+    app_target_name = resolved[:target]
 
     profile_env = Match::Utils.environment_variable_name_profile_name(app_identifier: bundle_id, type: Match.profile_type_sym(<%- rb(ios.matchType) %>))
     profile_name = ENV[profile_env].to_s
@@ -72,20 +66,24 @@ platform :ios do
       use_automatic_signing: false,
       path: project_path,
       team_id: team_id,
-      targets: [app_target.name],
+      targets: [app_target_name],
       profile_name: profile_name,
       code_sign_identity: code_sign_identity,
       bundle_identifier: bundle_id
     )
 
     # The build number goes into the generated app's Info.plist (app.json is never touched).
-    plist_setting = app_target.build_configurations.map { |c| c.build_settings["INFOPLIST_FILE"] }.compact.first.to_s
-    plist_path = File.join(File.dirname(project_path), plist_setting.gsub(/\A\$[({]?(SRCROOT|PROJECT_DIR)[)}]?\//, ""))
-    UI.user_error!("Info.plist of target " + app_target.name + " not found (" + plist_setting + ")") if plist_setting.empty? || !File.exist?(plist_path)
+    plist_path = resolved[:plist_path]
     set_info_plist_value(path: plist_path, key: "CFBundleVersion", value: build_number.to_s)
+    # Tell rn-shipyard what the lane wrote, so a tracked ios/ is only restored over our own edit
+    # (a file changed by someone else meanwhile is backed up first).
+    require "digest"
+    [File.join(project_path, "project.pbxproj"), plist_path].each do |written|
+      UI.message("SHIPYARD_WROTE " + Digest::SHA256.file(written).hexdigest + " " + written)
+    end
 
     gym(
-      workspace: options[:workspace],
+      workspace: resolved[:workspace],
       scheme: options[:scheme],
       export_method: "app-store",
       export_team_id: team_id,
@@ -96,6 +94,29 @@ platform :ios do
       output_directory: options[:output_dir] || "./output",
       output_name: (options[:output_name] || <%- rb(appName + ".ipa") %>).gsub("__BUILD_NUMBER__", build_number.to_s)
     )
+  end
+
+  desc "Find the Xcode project, the app target and its Info.plist for a workspace (used by the build lane)"
+  lane :shipyard_ios_resolve do |options|
+    # fastlane runs a lane BODY with the working directory set to fastlane/ (only actions chdir back
+    # to the project root), so every path is expanded against the project root, never the cwd.
+    root = File.expand_path("..", FastlaneCore::FastlaneFolder.path)
+    UI.user_error!("Pass workspace: and scheme:") unless options[:workspace] && options[:scheme]
+    workspace = File.expand_path(options[:workspace], root)
+    project_path = File.join(File.dirname(workspace), File.basename(workspace, File.extname(workspace)) + ".xcodeproj")
+    UI.user_error!("Xcode project not found next to the workspace: " + project_path) unless File.directory?(project_path)
+    require "xcodeproj"
+    project = Xcodeproj::Project.open(project_path)
+    app_targets = project.native_targets.select { |t| t.product_type == "com.apple.product-type.application" }
+    app_target = app_targets.find { |t| t.name == options[:scheme] }
+    app_target ||= app_targets.find { |t| t.build_configurations.any? { |c| c.build_settings["PRODUCT_BUNDLE_IDENTIFIER"] == options[:bundle_id] } }
+    app_target ||= app_targets.first if app_targets.length == 1
+    UI.user_error!("Could not tell which target is the app in " + project_path + " (application targets: " + app_targets.map(&:name).join(", ") + ")") if app_target.nil?
+    plist_setting = app_target.build_configurations.map { |c| c.build_settings["INFOPLIST_FILE"] }.compact.first.to_s
+    plist_path = File.join(File.dirname(project_path), plist_setting.gsub(/\A\$[({]?(SRCROOT|PROJECT_DIR)[)}]?\//, ""))
+    UI.user_error!("Info.plist of target " + app_target.name + " not found (" + plist_setting + ")") if plist_setting.empty? || !File.exist?(plist_path)
+    UI.message("SHIPYARD_RESOLVED project=" + project_path + " target=" + app_target.name + " plist=" + plist_path)
+    { workspace: workspace, project_path: project_path, target: app_target.name, plist_path: plist_path }
   end
 
   desc "Log in to App Store Connect (interactive step run by rn-shipyard submit before the upload)"

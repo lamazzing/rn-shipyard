@@ -393,3 +393,15 @@ describe("init --from-eas without credentials.json", () => {
     expect(vi.mocked(exec).mock.calls.some(([c]) => c === "npx")).toBe(false);
   });
 });
+
+describe("init --from-eas: existing config is validated first", () => {
+  it("a broken .shipyard/config.json fails with INVALID_CONFIG before the eas-cli download flow", async () => {
+    await rm(join(dir, "credentials.json"));
+    await mkdir(join(dir, ".shipyard"), { recursive: true });
+    await writeFile(join(dir, ".shipyard", "config.json"), "{ not json");
+    const { code, json } = await run();
+    expect(code).toBe(1);
+    expect(json.error.code).toBe("INVALID_CONFIG");
+    expect(vi.mocked(exec).mock.calls.some(([c]) => c === "npx")).toBe(false);
+  });
+});

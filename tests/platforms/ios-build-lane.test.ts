@@ -87,6 +87,21 @@ describe("iOS build lane: build number", () => {
     expect(await getLastUsedIosBuildNumber(dir)).toBe(0);
   });
 
+  it("takes the lane's own marker line, the first one: later output cannot spoof it", async () => {
+    vi.mocked(runFastlane).mockResolvedValue(
+      ok("[10:00:00]: SHIPYARD_BUILD_NUMBER=8\nSHIPYARD_BUILD_NUMBER=99\n    echo SHIPYARD_BUILD_NUMBER=77\nxcodebuild: SHIPYARD_BUILD_NUMBER=55\n")
+    );
+    expect((await buildIos(base())).buildNumber).toBe(8);
+    vi.mocked(runFastlane).mockResolvedValue(ok("FASTLANE noise SHIPYARD_BUILD_NUMBER=55\nSHIPYARD_BUILD_NUMBER=9\n"));
+    expect((await buildIos(base())).buildNumber).toBe(9);
+  });
+
+  it("passes an ABSOLUTE workspace (fastlane runs lane bodies inside fastlane/)", async () => {
+    vi.mocked(runFastlane).mockResolvedValue(ok(""));
+    await buildIos(base());
+    expect(vi.mocked(runFastlane).mock.calls[0][2]?.workspace).toBe(join(dir, "ios", "MyApp.xcworkspace"));
+  });
+
   it("refuses a Fastfile from an older rn-shipyard (no signing step) instead of failing in Xcode", async () => {
     await mkdir(join(dir, "fastlane"), { recursive: true });
     await writeFile(join(dir, "fastlane", "Fastfile"), "lane :build do\n gym\nend\n");
@@ -142,6 +157,42 @@ describe("iOS build lane: a tracked ios/ is put back", () => {
     }) as never);
     await expect(buildIos({ ...base(), restoreNativeFiles: true })).rejects.toThrow("spawn exploded");
     expect(await readFile(join(dir, "ios", "MyApp.xcodeproj", "project.pbxproj"), "utf-8")).toBe(PBX);
+  });
+
+  it("backs up a file someone else changed during the build before restoring, and warns", async () => {
+    const sha = (await import("node:crypto")).createHash("sha256");
+    vi.mocked(runFastlane).mockImplementation((async () => {
+      await mutate(); // the lane's own edit (reported with its hash)
+      const written = Buffer.from("<plist>CFBundleVersion 9</plist>");
+      sha.update(written);
+      await writeFile(join(dir, "ios", "My App", "Info.plist"), "<plist>edited by the user meanwhile</plist>");
+      return ok(`SHIPYARD_WROTE ${sha.digest("hex")} ${join(dir, "ios", "My App", "Info.plist")}\n`);
+    }) as never);
+    const warn = vi.fn();
+    await buildIos({ ...base(), restoreNativeFiles: true, warn });
+    expect(await readFile(join(dir, "ios", "My App", "Info.plist"), "utf-8")).toBe(PLIST);
+    const { readdir } = await import("node:fs/promises");
+    const backups = await readdir(join(dir, ".shipyard", "backup"));
+    expect(backups.some((b) => b.startsWith("ios_My App_Info.plist."))).toBe(true);
+    expect(await readFile(join(dir, ".shipyard", "backup", backups.find((b) => b.includes("Info.plist"))!), "utf-8")).toContain("edited by the user");
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining(".shipyard/backup/"));
+  });
+
+  it("makes no backup when the file is exactly what the lane wrote", async () => {
+    const { createHash } = await import("node:crypto");
+    vi.mocked(runFastlane).mockImplementation((async () => {
+      await mutate();
+      const h = (f: string) => createHash("sha256").update(Buffer.from(f)).digest("hex");
+      return ok(
+        `SHIPYARD_WROTE ${h("<plist>CFBundleVersion 9</plist>")} ${join(dir, "ios", "My App", "Info.plist")}\n` +
+          `SHIPYARD_WROTE ${h(PBX + "DEVELOPMENT_TEAM = T;\n")} ${join(dir, "ios", "MyApp.xcodeproj", "project.pbxproj")}\n`
+      );
+    }) as never);
+    const warn = vi.fn();
+    await buildIos({ ...base(), restoreNativeFiles: true, warn });
+    expect(warn).not.toHaveBeenCalled();
+    const { access } = await import("node:fs/promises");
+    await expect(access(join(dir, ".shipyard", "backup"))).rejects.toThrow();
   });
 
   it("leaves a generated (untracked/ignored) ios/ alone: nothing is snapshotted or restored", async () => {

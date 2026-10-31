@@ -144,6 +144,10 @@ npx eas-cli build:version:get -p android -e production
 
 More in [Android keystore and credentials](/guides/android-credentials/).
 
+## iOS build numbers
+
+EAS remote versioning kept your build number. rn-shipyard numbers iOS builds from `.shipyard/version-code.json`, `expo.ios.buildNumber` or 1, and, with an App Store Connect API key, from the latest TestFlight build. Without a key the counter can start below what App Store Connect already has, so pass the key or `--build-number <n>` above TestFlight's latest. See [Version numbers](/guides/version-numbers/#ios-the-build-number-counter). App extensions are not signed by the build lane yet.
+
 ## iOS certificates
 
 EAS manages your distribution certificate and provisioning profile. With rn-shipyard they live in a private Git repo, encrypted by Fastlane Match. You can create new ones or let Match generate them on first run. See [iOS signing with Fastlane Match](/guides/ios-signing/).

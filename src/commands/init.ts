@@ -159,6 +159,17 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
   let doIos = opts.platform === "all" || opts.platform === "ios";
   let doAndroid = opts.platform === "all" || opts.platform === "android";
 
+  // Init for one platform MERGES into the existing config: the other platform's block is kept as is.
+  // An unreadable config is an error here, never silently replaced.
+  let existingConfig: ShipyardConfig | undefined;
+  try {
+    existingConfig = await readExistingConfig(projectDir);
+  } catch (err) {
+    if (err instanceof ShipyardError) return fail(err, 1);
+    throw err;
+  }
+  // (read before the --from-eas download flow, so a broken config fails before any side effect)
+
   // --- --from-eas: read credentials.json first, so a missing file fails before any side effect ---
   let easCreds: EasCredentials | undefined;
   if (opts.fromEas !== undefined && opts.fromEas !== false) {
@@ -303,16 +314,6 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
         1
       );
     }
-  }
-
-  // Init for one platform MERGES into the existing config: the other platform's block is kept as is.
-  // An unreadable config is an error here, never silently replaced.
-  let existingConfig: ShipyardConfig | undefined;
-  try {
-    existingConfig = await readExistingConfig(projectDir);
-  } catch (err) {
-    if (err instanceof ShipyardError) return fail(err, 1);
-    throw err;
   }
 
   // --- --from-eas, Android: verify and copy the EAS keystore, then take the same path as

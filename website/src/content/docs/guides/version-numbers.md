@@ -29,7 +29,12 @@ rn-shipyard build --platform ios --build-number 12
 
 The value must be greater than `lastUsed` (`BUILD_NUMBER_REUSED`) and, when TestFlight can be read, greater than its latest build (the lane stops). A non-positive-integer gives `INVALID_BUILD_NUMBER`.
 
-App extensions keep the build number their project gives them; rn-shipyard only sets the app target's.
+App extensions keep the build number their project gives them; rn-shipyard only sets the app target's (extensions are not signed by the build lane yet).
+
+Caveats:
+
+- **Without an App Store Connect key** the counter starts at `expo.ios.buildNumber` or 1, which App Store Connect may already have used. If you come from EAS, give `build` an API key (`EXPO_ASC_KEY_ID`, `EXPO_ASC_ISSUER_ID`, `EXPO_ASC_API_KEY_PATH`) or pass `--build-number` above TestFlight's latest build.
+- **Concurrent builds** (two machines, or two runs at once) can pick the same number; the counter is a local file.
 
 ## Marketing version warning
 

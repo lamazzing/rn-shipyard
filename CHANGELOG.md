@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+- iOS build lane resolved the Xcode project against `fastlane/` (fastlane runs lane bodies there), so every build failed with "Xcode project not found". Paths are now absolute and resolved in a separate lane `shipyard_ios_resolve`, covered by a test against real fastlane.
+- The iOS build number is read from the lane's own marker line (the first one), so later build output cannot spoof it.
+- An empty `MATCH_PASSWORD` is removed from every child process environment (Ruby treated it as a passphrase instead of using the keychain one).
+- `init --from-eas` validates the existing `.shipyard/config.json` before starting the eas-cli download.
+- A tracked `ios/` file you edit during a build is saved to `.shipyard/backup/` before it is restored.
+- Known limitations: app extensions are not signed or mapped by the build lane yet; without an App Store Connect key the iOS counter starts at `expo.ios.buildNumber` or 1 (EAS migrants: pass a key or `--build-number`); concurrent builds can pick the same number; signing also applies to the Debug configuration (harmless).
+
 ### Added
 - `doctor` warns (never fails, never deletes) when EAS's plaintext `credentials.json` / `credentials/` are still on disk after a successful build, with the exact `rm` command and whether they are git-ignored or tracked.
 - The release workflow waits until npm serves the new tarball and `npm view` (every 15 s, up to 10 min) before finishing.

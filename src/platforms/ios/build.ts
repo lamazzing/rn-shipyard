@@ -1,4 +1,5 @@
-import { readFile, access } from "node:fs/promises";
+import { readFile, access, mkdir, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { runFastlane } from "../../fastlane/runner.js";
 import type { PlatformIosConfig } from "../../core/config.js";
@@ -118,6 +119,8 @@ async function runIosBuild(
   // A tracked ios/ belongs to the user: the lane edits project.pbxproj and Info.plist, so put
   // them back byte for byte afterwards, whatever happens (also on SIGINT/SIGTERM/SIGHUP).
   let restore: (() => Promise<void>) | undefined;
+  /** absolute path -> sha256 of what the lane wrote (from its SHIPYARD_WROTE lines) */
+  const laneWrote = new Map<string, string>();
   let cleanup: ReturnType<typeof registerCleanup> | undefined;
   if (opts.restoreNativeFiles) {
     const names: string[] = [];
@@ -131,6 +134,24 @@ async function runIosBuild(
     }
     const snapshot = await snapshotFiles(opts.projectDir, names);
     restore = async () => {
+      // A file that is neither the original nor what the lane wrote was changed by someone else
+      // during the build: keep a copy before the restore overwrites it.
+      for (const [name, before] of snapshot) {
+        if (before === null) continue;
+        const now = await readFile(join(opts.projectDir, name)).catch(() => null);
+        if (now === null || now.equals(before)) continue;
+        const wroteSha = laneWrote.get(join(opts.projectDir, name));
+        if (wroteSha !== undefined && sha256(now) === wroteSha) continue;
+        const dir = join(opts.projectDir, ".shipyard", "backup");
+        const copy = join(dir, `${name.replace(/[\\/]/g, "_")}.${new Date().toISOString().replace(/[:.]/g, "-")}`);
+        try {
+          await mkdir(dir, { recursive: true });
+          await writeFile(copy, now);
+          opts.warn?.(`${name} was changed during the build by something other than rn-shipyard: your version is saved as ${join(".shipyard", "backup", copy.split("/").pop()!)} before ${name} is restored`);
+        } catch {
+          opts.warn?.(`${name} was changed during the build and could not be backed up; restoring it anyway`);
+        }
+      }
       const report = await restoreFiles(opts.projectDir, snapshot);
       if (report.restored.length > 0) {
         opts.info?.(`Restored ${report.restored.join(", ")} (ios/ is tracked in git; the build had modified it)`);
@@ -148,7 +169,8 @@ async function runIosBuild(
       "ios",
       "build",
       {
-        workspace: target.workspace,
+        // absolute: fastlane runs a lane body inside fastlane/, not the project root
+        workspace: join(opts.projectDir, target.workspace),
         scheme: target.scheme,
         output_dir: opts.outputDir,
         output_name: opts.outputName,
@@ -166,13 +188,14 @@ async function runIosBuild(
     );
   } finally {
     if (cleanup) {
+      if (result) collectWrote(result.output, laneWrote);
       await cleanup.run();
       cleanup.unregister();
     }
   }
 
-  const buildNumber = lastMarker(result.output, "SHIPYARD_BUILD_NUMBER") ?? opts.buildNumber;
-  const latest = lastMarker(result.output, "SHIPYARD_TESTFLIGHT_LATEST");
+  const buildNumber = firstMarker(result.output, "SHIPYARD_BUILD_NUMBER") ?? opts.buildNumber;
+  const latest = firstMarker(result.output, "SHIPYARD_TESTFLIGHT_LATEST");
 
   if (result.success) {
     await recordIosBuildNumber(opts.projectDir, buildNumber);
@@ -194,7 +217,23 @@ async function runIosBuild(
   };
 }
 
-function lastMarker(output: string, name: string): number | undefined {
-  const all = [...output.matchAll(new RegExp(`${name}=(\\d+)`, "g"))];
-  return all.length > 0 ? Number(all[all.length - 1][1]) : undefined;
+/**
+ * The lane's own marker: fastlane's log line is "[hh:mm:ss]: NAME=value" (or just "NAME=value"
+ * with FASTLANE_HIDE_TIMESTAMP). The FIRST such whole line wins: xcodebuild and script phases
+ * print later and must not be able to spoof it.
+ */
+function firstMarker(output: string, name: string): number | undefined {
+  const m = new RegExp(`^(?:\\[\\d{2}:\\d{2}:\\d{2}\\]: )?${name}=(\\d+)\\s*$`, "m").exec(output);
+  return m ? Number(m[1]) : undefined;
+}
+
+function sha256(b: Buffer): string {
+  return createHash("sha256").update(b).digest("hex");
+}
+
+/** Records the lane's SHIPYARD_WROTE lines (first per path) into `into`. */
+function collectWrote(output: string, into: Map<string, string>): void {
+  for (const m of output.matchAll(/^(?:\[\d{2}:\d{2}:\d{2}\]: )?SHIPYARD_WROTE ([0-9a-f]{64}) (.+?)\s*$/gm)) {
+    if (!into.has(m[2])) into.set(m[2], m[1]);
+  }
 }
