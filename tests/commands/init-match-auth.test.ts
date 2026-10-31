@@ -9,7 +9,7 @@ vi.mock("../../src/utils/shell.js", () => ({ exec: vi.fn(), registerStdinRelease
 const asked: string[] = [];
 vi.mock("../../src/utils/prompt.js", () => ({
   createPrompter: vi.fn(() => ({
-    ask: vi.fn(async (q: string, d?: string) => {
+    ask: vi.fn(async (_id: string, q: string, d?: string) => {
       asked.push(q);
       return d || "value";
     }),

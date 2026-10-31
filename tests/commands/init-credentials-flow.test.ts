@@ -15,7 +15,7 @@ const answers: Record<string, string> = {};
 const asked: string[] = [];
 vi.mock("../../src/utils/prompt.js", () => ({
   createPrompter: vi.fn(() => ({
-    ask: vi.fn(async (q: string, d?: string) => {
+    ask: vi.fn(async (_id: string, q: string, d?: string) => {
       asked.push(q);
       const key = Object.keys(answers).find((k) => q.includes(k));
       return key ? answers[key] : (d ?? "");
