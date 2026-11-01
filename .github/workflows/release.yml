@@ -1,6 +1,6 @@
 name: Release
 
-# Publishes to npm when a version tag (v1.2.3) is pushed, after lint, tests and build pass.
+# Publishes to npm when a version tag (v1.2.3) is pushed, after the QA workflow (qa.yml) and lint, tests and build pass.
 # Uses npm trusted publishing (OIDC): no NPM_TOKEN secret. Configured on npmjs.com →
 # rn-shipyard → Settings → Trusted publishing → GitHub Actions, repository lamazzing/rn-shipyard,
 # workflow release.yml, "Allow npm publish" on. The tag must match package.json's version.
@@ -11,11 +11,22 @@ on:
 
 permissions:
   contents: read
-  id-token: write # OIDC token for npm trusted publishing and provenance
 
 jobs:
+  # The QA suite incl. the real Apple end to end (init, build, TestFlight upload) must pass first.
+  # A called workflow can use its own environment (apple-qa) and that environment's secrets, so no
+  # `secrets: inherit`. It never gets more than contents: read.
+  qa:
+    uses: ./.github/workflows/qa.yml
+    permissions:
+      contents: read
+
   publish:
+    needs: qa
     runs-on: macos-latest
+    permissions:
+      contents: read
+      id-token: write # OIDC token for npm trusted publishing and provenance
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7

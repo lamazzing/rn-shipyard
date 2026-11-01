@@ -54,7 +54,23 @@ Environment variables:
 | `QA_RUN_DIR_BASE` | Create the run directory here instead of the OS temp dir |
 | `ANDROID_HOME` | Android SDK location (also found at `~/Library/Android/sdk`) |
 
-Everything happens in the run's temp directory; nothing outside it is touched. In CI, `.github/workflows/qa.yml` runs the suite on pull requests, pushes to `main`, nightly, on demand and via `workflow_call`; a failing nightly or `main` run opens or updates one issue labelled `qa-failure` (`.github/workflows/qa-report.yml`, a `workflow_run` follow-up, so `qa.yml` itself needs only `contents: read` from a caller). In CI (`CI` set) a scenario whose tool is missing (Xcode, JDK, Android SDK, fastlane, CocoaPods) fails instead of skipping.
+Everything happens in the run's temp directory; nothing outside it is touched. In CI, `.github/workflows/qa.yml` runs the suite (without Apple) on pull requests, pushes to `main`, nightly, on demand and via `workflow_call`; a failing nightly or `main` run opens or updates one issue labelled `qa-failure` (`.github/workflows/qa-report.yml`, a `workflow_run` follow-up, so `qa.yml` itself needs only `contents: read` from a caller). In CI (`CI` set) a scenario whose tool is missing (Xcode, JDK, Android SDK, fastlane, CocoaPods) fails instead of skipping.
+
+### Apple end-to-end job
+
+The `apple` job in `.github/workflows/qa.yml` runs the real thing: `init --platform ios --non-interactive` (Match creates or reuses the certificate and profile), `build --platform ios`, then `submit --platform ios` (a real TestFlight upload), all with **only an App Store Connect API key** (no Apple ID, no `FASTLANE_USER`). It is the run that catches bugs like `init` ignoring the configured key and failing with "Missing username". `scripts/qa-apple.mjs` does the work (fixture, the three commands, assertions on the JSON, redacted logs); the workflow only prepares secrets.
+
+- **When it runs:** nightly (`schedule`), on demand, and as part of the release gate for a `v*` tag. Never for pull requests or pushes: it needs secrets and every run uploads a build to TestFlight. A failing nightly opens or updates the `qa-failure` issue like the other jobs.
+- **Environment:** `apple-qa` on GitHub (usable only from `main` and `v*` tags). Secrets: `ASC_KEY_P8` (contents of the `.p8`), `MATCH_PASSWORD`, `MATCH_DEPLOY_KEY` (SSH private key with write access to the private Match repo). Variables: `ASC_KEY_ID`, `ASC_ISSUER_ID`, `APPLE_TEAM_ID`, `QA_BUNDLE_ID`, `MATCH_GIT_URL`. The key needs the App Manager role, and an App Store Connect app record must exist for `QA_BUNDLE_ID`.
+- **Secrets:** the `.p8` is written to `$RUNNER_TEMP` (mode 600), the deploy key only goes into an `ssh-agent` (GitHub's host keys come from `api.github.com/meta`), and the Match build uses a temporary unlocked keychain made by the workflow (rn-shipyard itself has no CI keychain handling). The script redacts the password and the key from everything it prints or saves; only the JSON outputs and logs are uploaded, and only on failure. A last `if: always()` step deletes the key, the agent and the keychain.
+- **Concurrency:** runs queue (`qa-apple`, never cancelled), because build numbers come from TestFlight.
+- **First run:** the Match repo is empty, so `init` creates and pushes the certificate and profile (not read-only).
+- **Trigger it by hand:** `gh workflow run QA --ref main` (the whole QA workflow; the `apple` job is included).
+- **Locally, without Apple:** `npm run build && QA_FIXTURE_DIR=<prepared Expo project> node scripts/qa-apple.mjs --dry-run` creates the fixture and prints the plan, then stops before contacting Apple.
+
+### Release gate
+
+`.github/workflows/release.yml` starts with a `qa` job that calls `qa.yml` (`uses: ./.github/workflows/qa.yml`), and `publish` has `needs: qa`: a `v*` tag publishes to npm only after the whole QA suite, including the Apple job, passes. Nothing is inherited: the called workflow gets `contents: read` and reaches the `apple-qa` environment's own secrets. `qa-report.yml` does not fire for these runs (they are part of the Release run, not separate `QA` runs). If the Apple job fails for a reason outside the code (an expired key, Apple outage), fix that and push the tag again; the gate is not skipped.
 
 ## Architecture
 

@@ -2,7 +2,9 @@ name: QA
 
 # End-to-end QA: runs the BUILT rn-shipyard CLI against throwaway Expo projects with real git,
 # fastlane, Gradle and CocoaPods (tests/qa, `npm run test:qa`). No Apple account, no secrets.
-# See CONTRIBUTING.md, "QA suite". release.yml can depend on this via `uses: ./.github/workflows/qa.yml`.
+# The `apple` job additionally runs the real thing (App Store Connect key, Match repo, TestFlight
+# upload) in the protected environment `apple-qa`, on schedule / on demand / for release tags only.
+# See CONTRIBUTING.md, "QA suite". release.yml gates npm publish on this via `uses: ./.github/workflows/qa.yml`.
 #
 # Reusable: a caller needs to grant only `contents: read`. Failure issues are NOT opened here (a
 # called workflow sees the caller's event, e.g. a release tag push); .github/workflows/qa-report.yml
@@ -73,3 +75,120 @@ jobs:
             qa-results.json
           if-no-files-found: ignore
           retention-days: 14
+
+  # Real Apple end to end: init (Match, API key only) -> build -> submit (TestFlight upload).
+  # Every run uploads a build to TestFlight and needs secrets, so it never runs for pull requests or
+  # pushes. In a called workflow github.event_name is the CALLER's: a release run is a push, so it is
+  # recognised by its ref (refs/tags/v*). The environment only admits main and v* tags.
+  apple:
+    if: >-
+      github.repository == 'lamazzing/rn-shipyard' &&
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: macos-15
+    timeout-minutes: 90
+    environment: apple-qa
+    permissions:
+      contents: read
+    # Build numbers come from TestFlight (latest + 1): two runs at once would collide, so queue, never cancel.
+    concurrency:
+      group: qa-apple
+      cancel-in-progress: false
+    env:
+      QA_BUNDLE_ID: ${{ vars.QA_BUNDLE_ID }}
+      MATCH_GIT_URL: ${{ vars.MATCH_GIT_URL }}
+      APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+      ASC_KEY_ID: ${{ vars.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ vars.ASC_ISSUER_ID }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: fastlane and CocoaPods
+        run: |
+          brew install fastlane
+          command -v pod || brew install cocoapods
+          fastlane --version
+          pod --version
+          xcodebuild -version
+
+      - run: npm ci
+      - run: npm run build
+
+      # Secrets live in files / agents outside the checkout, mode 600, and are removed in the last step.
+      - name: App Store Connect key
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          set -eu
+          umask 077
+          mkdir -p "$RUNNER_TEMP/asc"
+          printf '%s\n' "$ASC_KEY_P8" > "$RUNNER_TEMP/asc/AuthKey.p8"
+          chmod 600 "$RUNNER_TEMP/asc/AuthKey.p8"
+          echo "ASC_KEY_PATH=$RUNNER_TEMP/asc/AuthKey.p8" >> "$GITHUB_ENV"
+
+      # Deploy key for the private Match repo: ssh-agent, never a file. GitHub's host keys come from
+      # its API over TLS (not ssh-keyscan on first use).
+      - name: ssh-agent for the Match repo
+        env:
+          MATCH_DEPLOY_KEY: ${{ secrets.MATCH_DEPLOY_KEY }}
+        run: |
+          set -eu
+          eval "$(ssh-agent -s)" > /dev/null
+          echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
+          echo "SSH_AGENT_PID=$SSH_AGENT_PID" >> "$GITHUB_ENV"
+          printf '%s\n' "$MATCH_DEPLOY_KEY" | ssh-add - 2> /dev/null
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          curl -fsS https://api.github.com/meta | python3 -c 'import json,sys; [print("github.com " + k) for k in json.load(sys.stdin)["ssh_keys"]]' >> ~/.ssh/known_hosts
+          ssh-add -l
+
+      # fastlane match on a CI Mac needs an unlocked keychain that is the default one. rn-shipyard's
+      # lanes do not create one (a CI feature, not part of the product), so the workflow does.
+      - name: Temporary keychain
+        run: |
+          set -eu
+          kc="$RUNNER_TEMP/qa-apple.keychain-db"
+          pw="$(openssl rand -hex 24)"
+          echo "::add-mask::$pw"
+          security create-keychain -p "$pw" "$kc"
+          security set-keychain-settings -lut 21600 "$kc"
+          security unlock-keychain -p "$pw" "$kc"
+          security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
+          security default-keychain -d user -s "$kc"
+          echo "MATCH_KEYCHAIN_NAME=$kc" >> "$GITHUB_ENV"
+          echo "MATCH_KEYCHAIN_PASSWORD=$pw" >> "$GITHUB_ENV"
+
+      # The first run finds the Match repo empty: init's Match step (readonly: false) creates the
+      # distribution certificate and App Store profile and pushes them; later runs reuse them.
+      - name: init, build, submit (API key only, no Apple ID)
+        env:
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+        run: node scripts/qa-apple.mjs --out "$GITHUB_WORKSPACE/qa-apple-out"
+
+      # Only the redacted JSON documents and logs (scripts/qa-apple.mjs removes the password and the key)
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: qa-apple-logs
+          path: |
+            qa-apple-out/*.json
+            qa-apple-out/*.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Remove key, agent and keychain
+        if: always()
+        run: |
+          rm -rf "$RUNNER_TEMP/asc" qa-apple-out/app
+          [ -z "${SSH_AGENT_PID:-}" ] || kill "$SSH_AGENT_PID" 2> /dev/null || true
+          if [ -n "${MATCH_KEYCHAIN_NAME:-}" ]; then
+            security default-keychain -d user -s login.keychain-db || true
+            security list-keychains -d user -s login.keychain-db || true
+            security delete-keychain "$MATCH_KEYCHAIN_NAME" || true
+          fi

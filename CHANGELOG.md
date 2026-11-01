@@ -4,6 +4,12 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Internal
+- QA: new `apple` job in `.github/workflows/qa.yml` (nightly, manual and for release tags, environment `apple-qa`) runs the real `init`, `build` and `submit` (TestFlight upload) with only an App Store Connect API key, via `scripts/qa-apple.mjs`. This is the run that catches `init` ignoring the configured key.
+- `release.yml` publishes to npm only after the QA workflow, including the Apple job, passes (`qa` job, `publish` `needs: qa`).
+
 ## [0.4.2] - 2026-10-31
 
 ### Fixed
