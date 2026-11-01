@@ -80,6 +80,11 @@ jobs:
   # Every run uploads a build to TestFlight and needs secrets, so it never runs for pull requests or
   # pushes. In a called workflow github.event_name is the CALLER's: a release run is a push, so it is
   # recognised by its ref (refs/tags/v*). The environment only admits main and v* tags.
+  #
+  # Secrets are scoped by step: nothing secret exists while third-party code is installed (fixture
+  # step), only init and build see the key, the Match password, the ssh-agent and the keychain, and
+  # submit sees the key alone. No secret goes through GITHUB_ENV. Residual risk: during build,
+  # `expo prebuild` config plugins and `pod install` still run fixture-dependency code (see CONTRIBUTING.md).
   apple:
     if: >-
       github.repository == 'lamazzing/rn-shipyard' &&
@@ -89,11 +94,12 @@ jobs:
     environment: apple-qa
     permissions:
       contents: read
-    # Build numbers come from TestFlight (latest + 1): two runs at once would collide, so queue, never cancel.
+    # Build numbers come from TestFlight (latest + 1): runs queue, never cancel. A release tag has its
+    # own group so a pending tag run can never be replaced by a newer nightly or manual run.
     concurrency:
-      group: qa-apple
+      group: qa-apple-${{ startsWith(github.ref, 'refs/tags/') && github.ref || 'nightly' }}
       cancel-in-progress: false
-    env:
+    env: # variables, not secrets
       QA_BUNDLE_ID: ${{ vars.QA_BUNDLE_ID }}
       MATCH_GIT_URL: ${{ vars.MATCH_GIT_URL }}
       APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
@@ -119,6 +125,11 @@ jobs:
       - run: npm ci
       - run: npm run build
 
+      # create-expo-app and npm install run third-party code: do it first, with no secret anywhere
+      # (the script refuses to install if one is in its environment). Versions are pinned in the script.
+      - name: Fixture app (no secrets yet)
+        run: node scripts/qa-apple.mjs --stage fixture --out "$GITHUB_WORKSPACE/qa-apple-out"
+
       # Secrets live in files / agents outside the checkout, mode 600, and are removed in the last step.
       - name: App Store Connect key
         env:
@@ -129,18 +140,19 @@ jobs:
           mkdir -p "$RUNNER_TEMP/asc"
           printf '%s\n' "$ASC_KEY_P8" > "$RUNNER_TEMP/asc/AuthKey.p8"
           chmod 600 "$RUNNER_TEMP/asc/AuthKey.p8"
-          echo "ASC_KEY_PATH=$RUNNER_TEMP/asc/AuthKey.p8" >> "$GITHUB_ENV"
 
       # Deploy key for the private Match repo: ssh-agent, never a file. GitHub's host keys come from
-      # its API over TLS (not ssh-keyscan on first use).
+      # its API over TLS (not ssh-keyscan on first use). The socket goes to the steps that need it
+      # through step outputs, not GITHUB_ENV.
       - name: ssh-agent for the Match repo
+        id: agent
         env:
           MATCH_DEPLOY_KEY: ${{ secrets.MATCH_DEPLOY_KEY }}
         run: |
           set -eu
           eval "$(ssh-agent -s)" > /dev/null
-          echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
-          echo "SSH_AGENT_PID=$SSH_AGENT_PID" >> "$GITHUB_ENV"
+          echo "sock=$SSH_AUTH_SOCK" >> "$GITHUB_OUTPUT"
+          echo "pid=$SSH_AGENT_PID" >> "$GITHUB_OUTPUT"
           printf '%s\n' "$MATCH_DEPLOY_KEY" | ssh-add - 2> /dev/null
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
@@ -149,7 +161,9 @@ jobs:
 
       # fastlane match on a CI Mac needs an unlocked keychain that is the default one. rn-shipyard's
       # lanes do not create one (a CI feature, not part of the product), so the workflow does.
+      # The (masked) password reaches init and build as a step output; the keychain is deleted after build.
       - name: Temporary keychain
+        id: kc
         run: |
           set -eu
           kc="$RUNNER_TEMP/qa-apple.keychain-db"
@@ -160,15 +174,48 @@ jobs:
           security unlock-keychain -p "$pw" "$kc"
           security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
           security default-keychain -d user -s "$kc"
-          echo "MATCH_KEYCHAIN_NAME=$kc" >> "$GITHUB_ENV"
-          echo "MATCH_KEYCHAIN_PASSWORD=$pw" >> "$GITHUB_ENV"
+          echo "name=$kc" >> "$GITHUB_OUTPUT"
+          echo "pw=$pw" >> "$GITHUB_OUTPUT"
 
       # The first run finds the Match repo empty: init's Match step (readonly: false) creates the
       # distribution certificate and App Store profile and pushes them; later runs reuse them.
-      - name: init, build, submit (API key only, no Apple ID)
+      - name: init (Match, API key only, no Apple ID)
         env:
+          ASC_KEY_PATH: ${{ runner.temp }}/asc/AuthKey.p8
           MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
-        run: node scripts/qa-apple.mjs --out "$GITHUB_WORKSPACE/qa-apple-out"
+          SSH_AUTH_SOCK: ${{ steps.agent.outputs.sock }}
+          MATCH_KEYCHAIN_NAME: ${{ steps.kc.outputs.name }}
+          MATCH_KEYCHAIN_PASSWORD: ${{ steps.kc.outputs.pw }}
+        run: node scripts/qa-apple.mjs --stage init --out "$GITHUB_WORKSPACE/qa-apple-out"
+
+      - name: build
+        env:
+          ASC_KEY_PATH: ${{ runner.temp }}/asc/AuthKey.p8
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          SSH_AUTH_SOCK: ${{ steps.agent.outputs.sock }}
+          MATCH_KEYCHAIN_NAME: ${{ steps.kc.outputs.name }}
+          MATCH_KEYCHAIN_PASSWORD: ${{ steps.kc.outputs.pw }}
+        run: node scripts/qa-apple.mjs --stage build --out "$GITHUB_WORKSPACE/qa-apple-out"
+
+      # Signing is done: the write deploy key and the certificates leave the machine before the upload.
+      - name: Stop ssh-agent and delete the keychain
+        if: always()
+        env:
+          AGENT_PID: ${{ steps.agent.outputs.pid }}
+          KEYCHAIN: ${{ steps.kc.outputs.name }}
+        run: |
+          [ -z "${AGENT_PID:-}" ] || kill "$AGENT_PID" 2> /dev/null || true
+          if [ -n "${KEYCHAIN:-}" ]; then
+            security default-keychain -d user -s login.keychain-db || true
+            security list-keychains -d user -s login.keychain-db || true
+            security delete-keychain "$KEYCHAIN" || true
+          fi
+
+      - name: submit (TestFlight, API key only)
+        if: success()
+        env:
+          ASC_KEY_PATH: ${{ runner.temp }}/asc/AuthKey.p8
+        run: node scripts/qa-apple.mjs --stage submit --out "$GITHUB_WORKSPACE/qa-apple-out"
 
       # Only the redacted JSON documents and logs (scripts/qa-apple.mjs removes the password and the key)
       - name: Upload logs
@@ -182,13 +229,6 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      - name: Remove key, agent and keychain
+      - name: Remove key and fixture
         if: always()
-        run: |
-          rm -rf "$RUNNER_TEMP/asc" qa-apple-out/app
-          [ -z "${SSH_AGENT_PID:-}" ] || kill "$SSH_AGENT_PID" 2> /dev/null || true
-          if [ -n "${MATCH_KEYCHAIN_NAME:-}" ]; then
-            security default-keychain -d user -s login.keychain-db || true
-            security list-keychains -d user -s login.keychain-db || true
-            security delete-keychain "$MATCH_KEYCHAIN_NAME" || true
-          fi
+        run: rm -rf "$RUNNER_TEMP/asc" qa-apple-out/app

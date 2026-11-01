@@ -28,8 +28,8 @@ jobs:
       contents: read
       id-token: write # OIDC token for npm trusted publishing and provenance
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
@@ -40,7 +40,7 @@ jobs:
       - run: npm test
       - run: npm run build
       # Trusted publishing (OIDC) needs a recent npm; the trusted publisher allows `npm publish`.
-      - run: npm install -g npm@12
+      - run: npm install -g npm@12.2.1
       - run: npm publish --provenance --access public
       # The registry lists a new version before its tarball is downloadable (404 for ~2 minutes).
       # Finish only when both the metadata and the download work.
