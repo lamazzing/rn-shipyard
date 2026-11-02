@@ -19,6 +19,8 @@ export const DOCS_BASE = "https://github.com/lamazzing/rn-shipyard#";
 
 /** What a check function reports; the runner adds id, group, title and blocks. */
 export interface Outcome {
+  /** Replaces the check's static title, e.g. "Xcode >= 26.4 (Expo SDK 58)" */
+  title?: string;
   status: CheckStatus;
   /** One line: the version found, or what is wrong. Never a secret value. */
   detail: string;

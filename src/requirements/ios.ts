@@ -1,5 +1,6 @@
 import { type CheckDef, type Action, DOCS_BASE } from "./types.js";
-import { tryExec, parseVersion, versionAtLeast } from "./helpers.js";
+import { tryExec, parseVersion } from "./helpers.js";
+import { xcodeMinimumFor, compareVersions, formatVersion } from "./xcode-minimum.js";
 
 const DOCS = `${DOCS_BASE}prerequisites`;
 const IOS: Action[] = ["build-ios", "submit-ios"];
@@ -10,22 +11,45 @@ export const iosChecks: CheckDef[] = [
     group: "iOS",
     title: "Xcode >= 15",
     blocks: IOS,
-    async run() {
+    async run(ctx) {
+      const { min, sdk, known, newer } = await xcodeMinimumFor(ctx.projectDir);
+      const minText = formatVersion(min);
+      const title = known ? `Xcode >= ${minText} (Expo SDK ${sdk})` : `Xcode >= ${minText}`;
       const r = await tryExec("xcodebuild", ["-version"]);
       if (r && r.exitCode === 0) {
         const v = r.stdout.match(/Xcode\s+([\d.]+)/)?.[1];
         const parsed = v ? parseVersion(v) : undefined;
-        if (parsed && !versionAtLeast(parsed, [15])) {
+        if (v && parsed && compareVersions(parsed, min) < 0) {
+          if (known) {
+            return {
+              title,
+              status: "fail",
+              detail: `Xcode ${v} is too old for Expo SDK ${sdk} (needs ${minText} or newer)`,
+              fix: `Update Xcode from the Mac App Store. If several versions are installed, select the newer one with: sudo xcode-select -s /Applications/<Xcode ${minText} or newer>.app/Contents/Developer`,
+              docs: DOCS,
+            };
+          }
+          if (newer) {
+            return {
+              title,
+              status: "warn",
+              detail: `Xcode ${v} may be too old: the table has no entry for Expo SDK ${sdk} and assumes at least ${minText}`,
+              fix: "Update Xcode from the Mac App Store, then run doctor again",
+              docs: DOCS,
+            };
+          }
           return {
+            title,
             status: "warn",
-            detail: `${v} is old; current Expo SDKs need Xcode 15 or newer`,
+            detail: `${v} is old; current Expo SDKs need Xcode ${minText} or newer`,
             fix: "Update Xcode in the Mac App Store",
             docs: DOCS,
           };
         }
-        return { status: "pass", detail: v ?? "installed" };
+        return { title, status: "pass", detail: v ?? "installed" };
       }
       return {
+        title,
         status: "fail",
         detail: "Xcode is not installed (the command line tools alone are not enough)",
         fix: "Install Xcode from the Mac App Store (https://apps.apple.com/app/xcode/id497799835), open it once, then run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer",

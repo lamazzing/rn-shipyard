@@ -6,6 +6,7 @@ vi.mock("../../src/utils/shell.js", () => ({ exec: vi.fn() }));
 
 import { exec } from "../../src/utils/shell.js";
 import { runRequirementChecks, type Platform } from "../../src/requirements/index.js";
+import { compareVersions } from "../../src/requirements/xcode-minimum.js";
 import { javaMajor } from "../../src/requirements/android.js";
 import { displayGitUrl } from "../../src/requirements/signing.js";
 import { mockMachine, missing, respond, fail, makeFixture, FAKE, type Fixture } from "./fixtures.js";
@@ -91,6 +92,98 @@ describe("iOS checks", () => {
     expect((await run("xcode"))?.status).toBe("fail");
     mockMachine(respond("xcodebuild", { exitCode: 0, stdout: "Xcode 14.3", stderr: "" }, "-version"));
     expect((await run("xcode"))?.status).toBe("warn");
+  });
+
+  describe("xcode minimum follows the Expo SDK", () => {
+    const xcodeIs = (v: string) =>
+      mockMachine(respond("xcodebuild", { exitCode: 0, stdout: `Xcode ${v}\nBuild version 17A1`, stderr: "" }, "-version"));
+    const setSdk = async (installed: string | undefined, range?: string) => {
+      await writeFile(join(fx.dir, "package.json"), JSON.stringify({ dependencies: range ? { expo: range } : {} }));
+      await writeFile(
+        join(fx.dir, "node_modules", "expo", "package.json"),
+        JSON.stringify(installed ? { version: installed } : {})
+      );
+    };
+
+    it("SDK 58 with Xcode 26.3 fails and names the cause", async () => {
+      await setSdk("58.0.1", "~58.0.0");
+      xcodeIs("26.3");
+      const c = await run("xcode");
+      expect(c?.status).toBe("fail");
+      expect(c?.title).toBe("Xcode >= 26.4 (Expo SDK 58)");
+      expect(c?.detail).toBe("Xcode 26.3 is too old for Expo SDK 58 (needs 26.4 or newer)");
+      expect(c?.fix).toContain("xcode-select -s");
+    });
+
+    it("SDK 58 with Xcode 26.4.1 passes", async () => {
+      await setSdk("58.0.1");
+      xcodeIs("26.4.1");
+      const c = await run("xcode");
+      expect(c?.status).toBe("pass");
+      expect(c?.title).toBe("Xcode >= 26.4 (Expo SDK 58)");
+    });
+
+    it("reads the SDK from the package.json range when expo is not installed", async () => {
+      await setSdk(undefined, "^55.0.3");
+      xcodeIs("26.1");
+      expect((await run("xcode"))?.detail).toContain("Expo SDK 55 (needs 26.2 or newer)");
+    });
+
+    it("an SDK missing from the table falls back to the lowest known minimum and only warns", async () => {
+      await setSdk("52.0.0");
+      xcodeIs("15.4");
+      const c = await run("xcode");
+      expect(c?.status).toBe("warn");
+      expect(c?.title).toBe("Xcode >= 16.0");
+      xcodeIs("16.0");
+      expect((await run("xcode"))?.status).toBe("pass");
+    });
+
+    it("an SDK newer than the table assumes the highest minimum and warns", async () => {
+      await setSdk("59.0.0");
+      xcodeIs("26.3");
+      const c = await run("xcode");
+      expect(c?.status).toBe("warn");
+      expect(c?.detail).toBe("Xcode 26.3 may be too old: the table has no entry for Expo SDK 59 and assumes at least 26.4");
+      xcodeIs("26.4");
+      expect((await run("xcode"))?.status).toBe("pass");
+    });
+
+    it("SDK 58 from package.json only (expo not installed)", async () => {
+      await rm(join(fx.dir, "node_modules", "expo", "package.json"));
+      await writeFile(join(fx.dir, "package.json"), JSON.stringify({ dependencies: { expo: "~58.0.0" } }));
+      xcodeIs("26.3");
+      const c = await run("xcode");
+      expect(c?.status).toBe("fail");
+      expect(c?.title).toBe("Xcode >= 26.4 (Expo SDK 58)");
+    });
+
+    it("a malformed package.json does not throw and keeps the generic check", async () => {
+      await writeFile(join(fx.dir, "package.json"), "{ not json");
+      await writeFile(join(fx.dir, "node_modules", "expo", "package.json"), "also {broken");
+      xcodeIs("14.3");
+      const c = await run("xcode");
+      expect(c?.status).toBe("warn");
+      expect(c?.title).toBe("Xcode >= 15");
+    });
+
+    it("without expo in the project keeps the generic Xcode 15 check", async () => {
+      await setSdk(undefined);
+      xcodeIs("14.3");
+      const c = await run("xcode");
+      expect(c?.status).toBe("warn");
+      expect(c?.title).toBe("Xcode >= 15");
+      xcodeIs("15.0");
+      expect((await run("xcode"))?.status).toBe("pass");
+    });
+  });
+
+  it("compareVersions is numeric per segment", () => {
+    expect(compareVersions([26, 3, 1], [26, 4])).toBe(-1);
+    expect(compareVersions([26, 4, 1], [26, 4])).toBe(1);
+    expect(compareVersions([26, 4, 0], [26, 4])).toBe(0);
+    expect(compareVersions([16, 10], [16, 9])).toBe(1);
+    expect(compareVersions([26], [26, 0, 0])).toBe(0);
   });
 
   it("xcode-select pointing at the command line tools fails with the sudo fix", async () => {

@@ -70,7 +70,7 @@ describe("doctor command", () => {
     mockMachine(respond("xcodebuild", { exitCode: 0, stdout: "Xcode 14.3", stderr: "" }, "-version"));
     const text = await runDoctor();
     expect(exitCode).toBe(0);
-    expect(text).toContain("! Xcode >= 15");
+    expect(text).toContain("! Xcode >= 16.0");
   });
 
   it("exit 2 when the only failures are missing project config", async () => {
