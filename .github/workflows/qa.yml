@@ -128,7 +128,8 @@ jobs:
       # create-expo-app and npm install run third-party code: do it first, with no secret anywhere
       # (the script refuses to install if one is in its environment). Versions are pinned in the script.
       - name: Fixture app (no secrets yet)
-        run: node scripts/qa-apple.mjs --stage fixture --out "$GITHUB_WORKSPACE/qa-apple-out"
+        # macOS runners export the system ssh-agent's (empty) socket; ours is started later
+        run: env -u SSH_AUTH_SOCK node scripts/qa-apple.mjs --stage fixture --out "$GITHUB_WORKSPACE/qa-apple-out"
 
       # Secrets live in files / agents outside the checkout, mode 600, and are removed in the last step.
       - name: App Store Connect key
