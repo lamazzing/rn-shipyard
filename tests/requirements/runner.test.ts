@@ -83,8 +83,8 @@ describe("readiness", () => {
     );
     const r = await runRequirementChecks({ projectDir: fx.dir, env });
     expect(r.ok).toBe(true);
-    expect(r.summary.warn).toBe(2);
-    expect(r.nextStep).toBe("Nothing blocks you (2 warnings above). Run `rn-shipyard build`.");
+    expect(r.summary.warn).toBe(3); // Xcode, Xcode for the Expo SDK, Match password
+    expect(r.nextStep).toBe("Nothing blocks you (3 warnings above). Run `rn-shipyard build`.");
   });
 });
 

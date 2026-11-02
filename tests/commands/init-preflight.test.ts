@@ -32,7 +32,7 @@ describe("init requirements pre-flight", () => {
     expect(vi.mocked(runPreflight).mock.calls[0][0]).toMatchObject({
       platforms: ["ios"],
       actions: ["build-ios"],
-      exclude: ["shipyard-config", "eas-json"],
+      exclude: ["shipyard-config", "eas-json", "xcode-sdk"],
       excludeGroups: ["Signing & submit"],
     });
   });

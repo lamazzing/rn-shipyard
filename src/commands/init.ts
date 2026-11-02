@@ -263,7 +263,7 @@ async function runInit(opts: InitOptions, prompterRef: { current?: Prompter }): 
       nonInteractive: !interactive,
       logger,
       // init has its own "No eas.json found" path, and creates the shipyard config
-      exclude: ["shipyard-config", "eas-json"],
+      exclude: ["shipyard-config", "eas-json", "xcode-sdk"], // init does not compile, so the Expo SDK Xcode minimum is not its business
       excludeGroups: ["Signing & submit"],
     });
     if (!preflight.ok) {

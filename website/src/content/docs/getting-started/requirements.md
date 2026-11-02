@@ -101,7 +101,7 @@ rn-shipyard doctor --json
 | System | Ruby 2.7 or newer | Fastlane. Not needed if Fastlane comes from Homebrew, which bundles its own Ruby |
 | System | Fastlane | iOS and Android builds, submits |
 | System | Xcode command line tools | everything |
-| iOS | Xcode new enough for your Expo SDK (26.4 for SDK 56 to 58, 26.2 for SDK 55, 16.1 for SDK 54, 16.0 for SDK 53; a newer SDK than these is assumed to need at least 26.4, as a warning; Xcode 15 when no Expo SDK is found), selected with `xcode-select`, license accepted | iOS builds |
+| iOS | Xcode new enough for your Expo SDK (26.4 for SDK 56 to 58, 26.2 for SDK 55, 16.1 for SDK 54, 16.0 for SDK 53; a newer SDK than these is assumed to need at least 26.4, as a warning), selected with `xcode-select`, license accepted | iOS builds. Only `build` stops when Xcode is too old for the Expo SDK; `init` and `submit` need just Xcode 15 or newer |
 | iOS | CocoaPods | iOS builds |
 | Android | JDK 17 or newer. `JAVA_HOME` may be unset when `java` on PATH is JDK 17+ (Gradle uses `$JAVA_HOME/bin/java` if set, else `java` from PATH); warning only if neither works | Android builds |
 | Android | Android SDK (`ANDROID_HOME`, `ANDROID_SDK_ROOT`, `android/local.properties` or `~/Library/Android/sdk`) with build-tools and platform-tools | Android builds |

@@ -102,7 +102,7 @@ If you need cloud builds, iOS builds without a Mac, or OTA updates, use EAS. If 
 | macOS 13+ | everything | the package declares `os: darwin` |
 | Node.js >= 22.12, git | runtime, Match | `brew install node` |
 | Ruby >= 2.7, Fastlane | build + submit | `brew install fastlane`; the Homebrew build brings its own Ruby |
-| Xcode (new enough for your Expo SDK, for example 26.4+ for SDK 56 to 58; selected with `xcode-select`, license accepted), CocoaPods | iOS | Mac App Store, then `sudo xcodebuild -license accept`; `brew install cocoapods` |
+| Xcode (selected with `xcode-select`, license accepted; `build` also needs it new enough for your Expo SDK, for example 26.4+ for SDK 56 to 58, while `init` and `submit` are not blocked by that), CocoaPods | iOS | Mac App Store, then `sudo xcodebuild -license accept`; `brew install cocoapods` |
 | JDK 17+ with `JAVA_HOME`, Android SDK (`ANDROID_HOME`, platform-tools, build-tools), `keytool` | Android | `brew install --cask zulu@17`; Android Studio installs the SDK |
 | An Expo project with dependencies installed, `app.json`/`app.config.*`, `eas.json` | everything | run from the project root |
 

@@ -108,7 +108,7 @@ describe("iOS checks", () => {
     it("SDK 58 with Xcode 26.3 fails and names the cause", async () => {
       await setSdk("58.0.1", "~58.0.0");
       xcodeIs("26.3");
-      const c = await run("xcode");
+      const c = await run("xcode-sdk");
       expect(c?.status).toBe("fail");
       expect(c?.title).toBe("Xcode >= 26.4 (Expo SDK 58)");
       expect(c?.detail).toBe("Xcode 26.3 is too old for Expo SDK 58 (needs 26.4 or newer)");
@@ -118,7 +118,7 @@ describe("iOS checks", () => {
     it("SDK 58 with Xcode 26.4.1 passes", async () => {
       await setSdk("58.0.1");
       xcodeIs("26.4.1");
-      const c = await run("xcode");
+      const c = await run("xcode-sdk");
       expect(c?.status).toBe("pass");
       expect(c?.title).toBe("Xcode >= 26.4 (Expo SDK 58)");
     });
@@ -126,34 +126,34 @@ describe("iOS checks", () => {
     it("reads the SDK from the package.json range when expo is not installed", async () => {
       await setSdk(undefined, "^55.0.3");
       xcodeIs("26.1");
-      expect((await run("xcode"))?.detail).toContain("Expo SDK 55 (needs 26.2 or newer)");
+      expect((await run("xcode-sdk"))?.detail).toContain("Expo SDK 55 (needs 26.2 or newer)");
     });
 
     it("an SDK missing from the table falls back to the lowest known minimum and only warns", async () => {
       await setSdk("52.0.0");
       xcodeIs("15.4");
-      const c = await run("xcode");
+      const c = await run("xcode-sdk");
       expect(c?.status).toBe("warn");
       expect(c?.title).toBe("Xcode >= 16.0");
       xcodeIs("16.0");
-      expect((await run("xcode"))?.status).toBe("pass");
+      expect((await run("xcode-sdk"))?.status).toBe("pass");
     });
 
     it("an SDK newer than the table assumes the highest minimum and warns", async () => {
       await setSdk("59.0.0");
       xcodeIs("26.3");
-      const c = await run("xcode");
+      const c = await run("xcode-sdk");
       expect(c?.status).toBe("warn");
       expect(c?.detail).toBe("Xcode 26.3 may be too old: the table has no entry for Expo SDK 59 and assumes at least 26.4");
       xcodeIs("26.4");
-      expect((await run("xcode"))?.status).toBe("pass");
+      expect((await run("xcode-sdk"))?.status).toBe("pass");
     });
 
     it("SDK 58 from package.json only (expo not installed)", async () => {
       await rm(join(fx.dir, "node_modules", "expo", "package.json"));
       await writeFile(join(fx.dir, "package.json"), JSON.stringify({ dependencies: { expo: "~58.0.0" } }));
       xcodeIs("26.3");
-      const c = await run("xcode");
+      const c = await run("xcode-sdk");
       expect(c?.status).toBe("fail");
       expect(c?.title).toBe("Xcode >= 26.4 (Expo SDK 58)");
     });
@@ -162,19 +162,35 @@ describe("iOS checks", () => {
       await writeFile(join(fx.dir, "package.json"), "{ not json");
       await writeFile(join(fx.dir, "node_modules", "expo", "package.json"), "also {broken");
       xcodeIs("14.3");
-      const c = await run("xcode");
-      expect(c?.status).toBe("warn");
-      expect(c?.title).toBe("Xcode >= 15");
+      expect((await run("xcode"))?.status).toBe("warn");
+      expect((await run("xcode-sdk"))?.status).toBe("skip");
     });
 
     it("without expo in the project keeps the generic Xcode 15 check", async () => {
       await setSdk(undefined);
       xcodeIs("14.3");
-      const c = await run("xcode");
-      expect(c?.status).toBe("warn");
-      expect(c?.title).toBe("Xcode >= 15");
+      expect((await run("xcode"))?.title).toBe("Xcode >= 15");
+      expect((await run("xcode"))?.status).toBe("warn");
+      expect((await run("xcode-sdk"))?.status).toBe("skip");
       xcodeIs("15.0");
       expect((await run("xcode"))?.status).toBe("pass");
+    });
+
+    it("xcode-sdk skips when Xcode is not installed (the xcode check fails)", async () => {
+      await setSdk("58.0.1");
+      mockMachine(respond("xcodebuild", fail("no xcode", 1), "-version"));
+      expect((await run("xcode"))?.status).toBe("fail");
+      expect((await run("xcode-sdk"))?.status).toBe("skip");
+    });
+
+    it("xcode-sdk blocks only build, xcode still blocks submit", async () => {
+      await setSdk("58.0.1");
+      xcodeIs("26.3");
+      const r = await runRequirementChecks({ projectDir: fx.dir, env: fx.env });
+      expect(r.checks.find((c) => c.id === "xcode-sdk")?.blocks).toEqual(["build-ios"]);
+      const sub = await runRequirementChecks({ projectDir: fx.dir, env: fx.env, platforms: ["ios"], actions: ["submit-ios"] });
+      expect(sub.checks.find((c) => c.id === "xcode-sdk")).toBeUndefined();
+      expect(sub.checks.find((c) => c.id === "xcode")?.status).toBe("pass");
     });
   });
 
