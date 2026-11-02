@@ -74,6 +74,55 @@ describe("extractBuildError", () => {
     expect(msg.endsWith("the real end")).toBe(true);
   });
 
+  it("keeps the indented reason lines after an error line ending with a colon", () => {
+    const out = [
+      "xcodebuild: error: Could not resolve package dependencies:",
+      "  Failed to clone repository https://github.com/example/pkg.git:",
+      "    fatal: unable to access 'https://github.com/example/pkg.git/': Could not resolve host: github.com",
+      "xcodebuild: error: Could not resolve package dependencies:",
+    ].join("\n");
+    const msg = extractBuildError(out);
+    expect(msg).toContain("Failed to clone repository");
+    expect(msg).toContain("Could not resolve host");
+    expect(msg.split("Could not resolve package dependencies:")).toHaveLength(2);
+  });
+
+  it("keeps the reason lines when every line carries a fastlane timestamp", () => {
+    const out = [
+      "[10:00:00]: xcodebuild: error: Could not resolve package dependencies:",
+      "[10:00:00]:   Failed to clone repository https://github.com/example/pkg.git:",
+      "[10:00:00]:     fatal: unable to access 'https://github.com/example/pkg.git/': Could not resolve host: github.com",
+      "[10:00:01]: xcodebuild: error: Could not resolve package dependencies:",
+    ].join("\n");
+    const msg = extractBuildError(out);
+    expect(msg).toContain("Failed to clone repository");
+    expect(msg).toContain("Could not resolve host");
+    expect(msg.split("Could not resolve package dependencies:")).toHaveLength(2);
+  });
+
+  it("keeps the reason lines of a gym ▸-prefixed error", () => {
+    const out = [
+      "[10:00:00]: ▸ error: Could not resolve package dependencies:",
+      "[10:00:00]: ▸   Failed to clone repository x",
+      "[10:00:00]: ▸     fatal: Could not resolve host: github.com",
+      "[10:00:00]: ▸ ** BUILD FAILED **",
+    ].join("\n");
+    const msg = extractBuildError(out);
+    expect(msg).toContain("Failed to clone repository x");
+    expect(msg).toContain("Could not resolve host");
+    expect(msg).not.toContain("BUILD FAILED");
+  });
+
+  it("reports a continuation line that is also an error line once", () => {
+    const out = "error: A failed:\n  error: B\nerror: B\n";
+    expect(extractBuildError(out).split("\n").filter((l) => l.includes("error: B"))).toHaveLength(1);
+  });
+
+  it("appends nothing when the colon line is followed by a non-indented line", () => {
+    const out = "xcodebuild: error: Something failed:\nnext unindented line\n";
+    expect(extractBuildError(out)).toBe("xcodebuild: error: Something failed:");
+  });
+
   it("returns an empty string for empty output", () => {
     expect(extractBuildError("")).toBe("");
   });
