@@ -27,7 +27,7 @@
 // distribution certificate and the App Store profile and pushes them. Later runs reuse them.
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -258,7 +258,14 @@ async function main() {
     const ipa = bi?.artifactPath ? resolve(dir, bi.artifactPath) : "";
     check(!!ipa && ipa.endsWith(".ipa") && existsSync(ipa), `build produced an .ipa (${bi?.artifactPath})`);
     if (bi?.error) console.log(`build error: ${redact(String(bi.error))}`);
-    if (failures.length) return;
+    if (failures.length) {
+      // the CLI's error is a summary; gym keeps the whole xcodebuild log (uploaded, redacted)
+      const gymLogs = join(process.env.HOME ?? "", "Library", "Logs", "gym");
+      for (const f of existsSync(gymLogs) ? await readdir(gymLogs) : []) {
+        if (f.endsWith(".log")) await writeFile(join(OUT, `gym-${f}`), redact(await readFile(join(gymLogs, f), "utf8")));
+      }
+      return;
+    }
     console.log(`Summary: build ${bi.version} (${bi.buildNumber}) -> ${bi.artifactPath}`);
   }
 
