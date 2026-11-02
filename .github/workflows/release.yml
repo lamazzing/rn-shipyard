@@ -14,10 +14,12 @@ permissions:
 
 jobs:
   # The QA suite incl. the real Apple end to end (init, build, TestFlight upload) must pass first.
-  # A called workflow can use its own environment (apple-qa) and that environment's secrets, so no
-  # `secrets: inherit`. It never gets more than contents: read.
+  # `secrets: inherit` is needed for the called job to see the apple-qa environment secrets (without
+  # it they are empty; v0.4.3 failed that way). The repo has no repository-level secrets, so nothing
+  # else is passed. It never gets more than contents: read.
   qa:
     uses: ./.github/workflows/qa.yml
+    secrets: inherit
     permissions:
       contents: read
 

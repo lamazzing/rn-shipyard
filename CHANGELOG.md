@@ -4,7 +4,9 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.4.3] - 2026-11-02
+## [0.4.4] - 2026-11-02
+
+The `v0.4.3` tag exists but 0.4.3 was never published to npm (its release run failed before publishing); 0.4.4 ships the same changes.
 
 ### Fixed
 - `doctor` (and the build pre-flight) checked for "Xcode >= 15" whatever the Expo SDK, so Expo SDK 58 with Xcode 26.3 (or 16.4) only failed deep in the build with errors that never mention Xcode. The Xcode check now uses the minimum from Expo's support table for the project's SDK (read from the installed `expo` or the `expo` range in `package.json`): 26.4 for SDK 56 to 58, 26.2 for SDK 55, 16.1 for SDK 54, 16.0 for SDK 53. The title names it (`Xcode >= 26.4 (Expo SDK 58)`), a too-old Xcode for a listed SDK is now a failure instead of a warning (`Xcode 26.3 is too old for Expo SDK 58 (needs 26.4 or newer)`), so `build` and `submit` stop in the pre-flight with `REQUIREMENTS_NOT_MET`, with an `xcode-select -s` hint, an SDK newer than the table assumes the highest listed minimum and an older one 16.0 (both warning only), and a project without Expo to 15 (warning only). Versions are compared numerically.
@@ -15,6 +17,7 @@ All notable changes to this project are documented here. The format is based on
 - QA: new `apple` job in `.github/workflows/qa.yml` (nightly, manual and for release tags, environment `apple-qa`) runs the real `init`, `build` and `submit` (TestFlight upload) with only an App Store Connect API key, via `scripts/qa-apple.mjs`. This is the run that catches `init` ignoring the configured key.
 - `release.yml` publishes to npm only after the QA workflow, including the Apple job, passes (`qa` job, `publish` `needs: qa`).
 - The Apple job runs on `macos-26` with Xcode 26.6 pinned (Expo SDK 56+ needs Xcode 26.4+), clears the runner's default `SSH_AUTH_SOCK` before the secret-free fixture step, fetches GitHub's SSH host keys with an authenticated `gh api meta`, and keeps the redacted gym log when the build fails. QA runs are grouped per event, so a push to `main` no longer cancels a waiting nightly or manual run.
+- `release.yml` passes `secrets: inherit` to the QA workflow, so its Apple job gets the `apple-qa` environment secrets.
 
 ## [0.4.2] - 2026-10-31
 
