@@ -149,6 +149,8 @@ jobs:
         id: agent
         env:
           MATCH_DEPLOY_KEY: ${{ secrets.MATCH_DEPLOY_KEY }}
+          # authenticated: anonymous api.github.com calls from shared runner IPs get 403 (rate limit)
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -eu
           eval "$(ssh-agent -s)" > /dev/null
@@ -157,7 +159,7 @@ jobs:
           printf '%s\n' "$MATCH_DEPLOY_KEY" | ssh-add - 2> /dev/null
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          curl -fsS https://api.github.com/meta | python3 -c 'import json,sys; [print("github.com " + k) for k in json.load(sys.stdin)["ssh_keys"]]' >> ~/.ssh/known_hosts
+          gh api meta --jq '.ssh_keys[] | "github.com " + .' >> ~/.ssh/known_hosts
           ssh-add -l
 
       # fastlane match on a CI Mac needs an unlocked keychain that is the default one. rn-shipyard's
