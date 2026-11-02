@@ -103,7 +103,7 @@ Per platform: decide whether `expo prebuild --clean` may run, run it, build with
 
 After prebuild, `package.json` and the lockfiles are restored if prebuild rewrote them.
 
-The iOS lane then runs Match (read-only), reads the latest TestFlight build number if an App Store Connect API key is set, applies manual signing and the build number to the generated project, and archives with gym. See [iOS signing](/guides/ios-signing/#builds) and [Version numbers](/guides/version-numbers/#ios-the-build-number-counter). A failed build reports the real error line (xcodebuild or Gradle `error:`, else fastlane's `[!]` line, else the last 15 lines); the Gemfile tip and update notices are ignored. The same text goes to `--json` (`platforms.<platform>.error`) and to history.
+The iOS lane then runs Match (read-only), reads the latest TestFlight build number if an App Store Connect API key is set, applies manual signing and the build number to the generated project, and archives with gym. See [iOS signing](/guides/ios-signing/#builds) and [Version numbers](/guides/version-numbers/#ios-the-build-number-counter). A failed build reports the real error line (xcodebuild or Gradle `error:`, else fastlane's `[!]` line, else the last 15 lines); the Gemfile tip and update notices are ignored. On iOS, gym's full log is written to `.shipyard/logs/` (gitignored); if the output has only an `error: ...:` header, the reason is taken from that log, and the error ends with `Full log: <path>`. The same text goes to `--json` (`platforms.<platform>.error`) and to history.
 
 With `--json` the result is `{ success, platforms, prebuild, warnings }`. `prebuild.<platform>.action` is `generated`, `skipped_tracked` or `refused`.
 

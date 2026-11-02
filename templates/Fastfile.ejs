@@ -92,6 +92,7 @@ platform :ios do
         provisioningProfiles: { bundle_id => profile_name }
       },
       output_directory: options[:output_dir] || "./output",
+      buildlog_path: options[:log_dir],
       output_name: (options[:output_name] || <%- rb(appName + ".ipa") %>).gsub("__BUILD_NUMBER__", build_number.to_s)
     )
   end

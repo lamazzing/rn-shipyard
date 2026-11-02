@@ -1,11 +1,12 @@
-import { readFile, access, mkdir, writeFile } from "node:fs/promises";
+import { readFile, access, mkdir, writeFile, readdir, stat } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { runFastlane } from "../../fastlane/runner.js";
 import type { PlatformIosConfig } from "../../core/config.js";
 import { recordIosBuildNumber, BUILD_NUMBER_TOKEN } from "../../core/build-number.js";
 import { ShipyardError } from "../../utils/errors.js";
-import { gitUrlSecrets } from "../../utils/secrets.js";
+import { gitUrlSecrets, collectSecrets } from "../../utils/secrets.js";
+import { redactSecrets } from "../../utils/shell.js";
 import { extractBuildError } from "../../utils/build-errors.js";
 import { snapshotFiles, restoreFiles, restoreFilesSync } from "../../utils/snapshot.js";
 import { registerCleanup } from "../../utils/cleanup.js";
@@ -163,6 +164,8 @@ async function runIosBuild(
     });
   }
 
+  const gymLogDir = join(opts.projectDir, ".shipyard", "logs");
+  const laneStart = Date.now();
   let result;
   try {
     result = await runFastlane(
@@ -174,6 +177,8 @@ async function runIosBuild(
         scheme: target.scheme,
         output_dir: opts.outputDir,
         output_name: opts.outputName,
+        // gym writes its full xcodebuild log here (.shipyard/logs/ is gitignored)
+        log_dir: gymLogDir,
         build_number: String(opts.buildNumber),
         build_number_override: opts.buildNumberOverride ? "true" : undefined,
       },
@@ -208,13 +213,45 @@ async function runIosBuild(
     };
   }
 
+  const secrets = collectSecrets({ ...process.env, ...opts.profileEnv, ...matchRepoEnv }, gitUrlSecrets(opts.config.matchGitUrl));
   return {
     status: "error",
     durationSeconds: result.durationSeconds,
-    error: extractBuildError(result.output),
+    error: await buildErrorWithGymLog(result.output, gymLogDir, secrets, laneStart),
     buildNumber,
     ...(latest !== undefined ? { testflightLatest: latest } : {}),
   };
+}
+
+/**
+ * The CLI output (gym through xcpretty) often keeps only the "error: ...:" header; xcodebuild's
+ * indented reason lines are only in gym's log file. When the header has no reason, look there,
+ * and always say where the log is. Never throws: a missing or unreadable log changes nothing.
+ */
+export async function buildErrorWithGymLog(
+  output: string,
+  logDir: string,
+  secrets: string[],
+  /** only logs written at or after this time (ms) belong to this build */
+  since: number
+): Promise<string> {
+  let error = extractBuildError(output);
+  try {
+    const logs = (await readdir(logDir)).filter((f) => f.endsWith(".log"));
+    const withTime = (await Promise.all(logs.map(async (f) => ({ f, t: (await stat(join(logDir, f))).mtimeMs })))).filter(
+      (x) => x.t >= since - 2000
+    );
+    if (withTime.length === 0) return error;
+    withTime.sort((a, b) => b.t - a.t);
+    const logPath = join(logDir, withTime[0].f);
+    if (error.endsWith(":")) {
+      const fromLog = extractBuildError(redactSecrets(await readFile(logPath, "utf8"), secrets));
+      if (fromLog.length > error.length) error = fromLog;
+    }
+    return `${error}\nFull log: ${logPath}`;
+  } catch {
+    return error;
+  }
 }
 
 /**

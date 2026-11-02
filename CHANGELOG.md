@@ -7,6 +7,7 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Fixed
+- iOS build errors now include the reason that only appears in gym's log. gym writes its full log to `.shipyard/logs/` (gitignored, via `buildlog_path`); when the CLI output has only the `error: ...:` header (for example `Could not resolve package dependencies:` without `Swift tools version 6.2.0 but the installed version is 6.1.0`), the reason is read from that log. The error ends with `Full log: <path>`. The GitHub Actions `::error ::` prefix is stripped from the summary. Run `rn-shipyard init` again to regenerate the Fastfile; an older one still builds but writes the log to gym's default folder.
 - The build error summary keeps the reason after an `error: ...:` line. xcodebuild's `error: Could not resolve package dependencies:` used to be reported alone; the indented lines below it (for example `Failed to clone repository ...` and `Could not resolve host`) are now included.
 
 ### Internal

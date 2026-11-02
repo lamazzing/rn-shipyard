@@ -127,3 +127,10 @@ describe("extractBuildError", () => {
     expect(extractBuildError("")).toBe("");
   });
 });
+
+describe("extractBuildError: GitHub annotation prefix", () => {
+  it("strips the ::error:: prefix so the header matches the log", () => {
+    const out = "::error ::xcodebuild: error: Could not resolve package dependencies:\n  package a is using Swift tools version 6.2.0";
+    expect(extractBuildError(out)).toBe("xcodebuild: error: Could not resolve package dependencies:\npackage a is using Swift tools version 6.2.0");
+  });
+});

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { mkdtemp, mkdir, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -101,5 +101,71 @@ describe("buildIos: phase 1 (match repo) then phase 2 (piped lane)", () => {
     vi.mocked(runFastlane).mockResolvedValue({ success: true, exitCode: 0, output: "", durationSeconds: 1 });
     await buildIos(base());
     expect(vi.mocked(runFastlane).mock.calls[0][3].env).toEqual({});
+  });
+});
+
+describe("buildIos: gym log in the error", () => {
+  const header = "::error ::xcodebuild: error: Could not resolve package dependencies:";
+  const logBody = "xcodebuild: error: Could not resolve package dependencies:\n  package 'apple' is using Swift tools version 6.2.0 but the installed version is 6.1.0\n";
+  const run = async () => {
+    vi.mocked(prepareMatchRepo).mockResolvedValue(undefined);
+    vi.mocked(runFastlane).mockResolvedValue({ success: false, exitCode: 1, output: `${header}\n${header}`, durationSeconds: 1 });
+    return buildIos(base());
+  };
+
+  it("takes the reason from gym's log and shows the log path", async () => {
+    const logs = join(dir, ".shipyard", "logs");
+    await mkdir(logs, { recursive: true });
+    await writeFile(join(logs, "App-App.log"), logBody);
+    const r = await run();
+    expect(r.error).toContain("Swift tools version 6.2.0");
+    expect(r.error).toContain(`Full log: ${join(logs, "App-App.log")}`);
+    expect(vi.mocked(runFastlane).mock.calls[0][2]).toMatchObject({ log_dir: logs });
+  });
+
+  it("falls back to the CLI error when there is no log", async () => {
+    const r = await run();
+    expect(r.error).toBe("xcodebuild: error: Could not resolve package dependencies:");
+  });
+});
+
+describe("buildIos: gym log freshness and redaction", () => {
+  const header = "xcodebuild: error: Could not resolve package dependencies:";
+  const fail = (output: string) => {
+    vi.mocked(prepareMatchRepo).mockResolvedValue(undefined);
+    vi.mocked(runFastlane).mockResolvedValue({ success: false, exitCode: 1, output, durationSeconds: 1 });
+    return buildIos(base());
+  };
+  const logsDir = () => join(dir, ".shipyard", "logs");
+
+  it("ignores a log older than the build", async () => {
+    await mkdir(logsDir(), { recursive: true });
+    const f = join(logsDir(), "old.log");
+    await writeFile(f, `${header}\n  old reason\n`);
+    const old = new Date(Date.now() - 3_600_000);
+    await utimes(f, old, old);
+    const r = await fail(header);
+    expect(r.error).toBe(header);
+  });
+
+  it("redacts secrets from the log text", async () => {
+    await mkdir(logsDir(), { recursive: true });
+    await writeFile(join(logsDir(), "a.log"), `${header}\n  token hunter2secret leaked\n`);
+    vi.stubEnv("MATCH_PASSWORD", "hunter2secret");
+    try {
+      const r = await fail(header);
+      expect(r.error).toContain("leaked");
+      expect(r.error).not.toContain("hunter2secret");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("keeps a rich CLI error and only adds the log path", async () => {
+    await mkdir(logsDir(), { recursive: true });
+    const f = join(logsDir(), "a.log");
+    await writeFile(f, `${header}\n  other\n`);
+    const r = await fail("error: Signing requires a development team");
+    expect(r.error).toBe(`error: Signing requires a development team\nFull log: ${f}`);
   });
 });

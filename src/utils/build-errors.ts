@@ -45,7 +45,8 @@ function clean(raw: string): string[] {
 }
 
 function strip(line: string): string {
-  return line.replace(/^\s*(?:▸\s*|❌\s*|\[!\]\s*)+/, "").trim();
+  // "::error ::" is the GitHub Actions annotation gym adds; the log file has the bare line
+  return line.replace(/^\s*(?:▸\s*|❌\s*|\[!\]\s*)+/, "").replace(/^::error[^:]*::\s*/, "").trim();
 }
 
 function cap(text: string, keepEnd = false): string {
