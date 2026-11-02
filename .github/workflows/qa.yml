@@ -25,7 +25,8 @@ permissions:
 
 # A newer push to a PR supersedes the running QA; main and nightly runs always finish.
 concurrency:
-  group: qa-${{ github.workflow }}-${{ github.ref }}
+  # per event: a push to main must not cancel a waiting nightly / manual run (it would skip the Apple job)
+  group: qa-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
