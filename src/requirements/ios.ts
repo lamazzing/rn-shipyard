@@ -54,7 +54,7 @@ export const iosChecks: CheckDef[] = [
           return {
             title,
             status: "fail",
-            detail: `Xcode ${v} is too old for Expo SDK ${sdk} (needs ${minText} or newer)`,
+            detail: `Xcode ${v} is too old for Expo SDK ${sdk}, which needs ${minText} or newer`,
             fix: `Update Xcode from the Mac App Store. If several versions are installed, select the newer one with: sudo xcode-select -s /Applications/<Xcode ${minText} or newer>.app/Contents/Developer`,
             docs: DOCS,
           };

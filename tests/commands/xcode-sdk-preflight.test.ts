@@ -54,7 +54,7 @@ describe("Xcode too old for the Expo SDK blocks only the iOS build", () => {
     expect(out).toEqual({ ok: false, exitCode: 1 });
     const printed = log.mock.calls.flat().join("\n");
     expect(printed).toContain("REQUIREMENTS_NOT_MET");
-    expect(printed).toContain("Xcode 16.4 is too old for Expo SDK 58 (needs 26.4 or newer)");
+    expect(printed).toContain("Xcode 16.4 is too old for Expo SDK 58, which needs 26.4 or newer");
     log.mockRestore();
   });
 });

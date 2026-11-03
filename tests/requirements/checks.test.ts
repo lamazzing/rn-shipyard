@@ -111,7 +111,7 @@ describe("iOS checks", () => {
       const c = await run("xcode-sdk");
       expect(c?.status).toBe("fail");
       expect(c?.title).toBe("Xcode >= 26.4 (Expo SDK 58)");
-      expect(c?.detail).toBe("Xcode 26.3 is too old for Expo SDK 58 (needs 26.4 or newer)");
+      expect(c?.detail).toBe("Xcode 26.3 is too old for Expo SDK 58, which needs 26.4 or newer");
       expect(c?.fix).toContain("xcode-select -s");
     });
 
@@ -126,7 +126,7 @@ describe("iOS checks", () => {
     it("reads the SDK from the package.json range when expo is not installed", async () => {
       await setSdk(undefined, "^55.0.3");
       xcodeIs("26.1");
-      expect((await run("xcode-sdk"))?.detail).toContain("Expo SDK 55 (needs 26.2 or newer)");
+      expect((await run("xcode-sdk"))?.detail).toContain("Expo SDK 55, which needs 26.2 or newer");
     });
 
     it("an SDK missing from the table falls back to the lowest known minimum and only warns", async () => {
