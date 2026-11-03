@@ -62,3 +62,23 @@ jobs:
           else
             gh issue create --label qa-failure --title "QA suite is failing" --body "$body"
           fi
+
+  # A green nightly run (the only one that includes the Apple end-to-end job) closes the open
+  # qa-failure issue. Push runs skip the Apple job, so they never close it.
+  resolve:
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'schedule' }}
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write # comment / close
+    steps:
+      - name: Close the qa-failure issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          number="$(gh issue list --label qa-failure --state open --limit 1 --json number --jq '.[0].number // empty')"
+          if [ -n "$number" ]; then
+            gh issue close "$number" --comment "Nightly QA passed (${SHA:0:7}), Apple end-to-end included: ${RUN_URL}"
+          fi
