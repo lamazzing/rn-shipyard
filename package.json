@@ -65,7 +65,7 @@
     "@types/node": "^26.6.5",
     "@types/uuid": "^10.0.0",
     "tsup": "^8.5.1",
-    "typescript": "^5.9.3",
+    "typescript": "^7.0.2",
     "vitest": "^5.0.5"
   },
   "os": [
