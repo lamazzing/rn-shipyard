@@ -4,6 +4,11 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.7] - 2026-11-26
+
+### Changed
+- QA: the nightly Apple end-to-end job (`init`, `build`, `submit` to TestFlight) no longer uploads a build every night. A new `apple-gate` job in `.github/workflows/qa.yml` runs it only when the Homebrew fastlane version, the QA workflow or `scripts/qa-apple.mjs` changed since the last green nightly Apple run, and at least once per ISO week (Apple-side changes, expiring certificates or keys). Manual runs and release tags always run it. No change to the CLI.
+
 ## [0.4.6] - 2026-11-03
 
 ### Fixed

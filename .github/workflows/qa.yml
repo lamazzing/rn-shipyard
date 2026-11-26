@@ -3,7 +3,8 @@ name: QA
 # End-to-end QA: runs the BUILT rn-shipyard CLI against throwaway Expo projects with real git,
 # fastlane, Gradle and CocoaPods (tests/qa, `npm run test:qa`). No Apple account, no secrets.
 # The `apple` job additionally runs the real thing (App Store Connect key, Match repo, TestFlight
-# upload) in the protected environment `apple-qa`, on schedule / on demand / for release tags only.
+# upload) in the protected environment `apple-qa`, on demand / for release tags, and from the nightly
+# schedule only when something it depends on changed (see `apple-gate`).
 # See CONTRIBUTING.md, "QA suite". release.yml gates npm publish on this via `uses: ./.github/workflows/qa.yml`.
 #
 # Reusable: a caller needs to grant only `contents: read`. Failure issues are NOT opened here (a
@@ -16,7 +17,7 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: "17 3 * * *" # nightly: catches new Expo / fastlane / Xcode releases
+    - cron: "17 3 * * *" # nightly: catches new Expo / fastlane releases (Apple job: see apple-gate)
   workflow_dispatch:
   workflow_call:
 
@@ -77,9 +78,66 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  # Decides whether the Apple job runs. Manual runs and release tags always run it. A nightly runs it
+  # only when the fingerprint changed since the last green nightly Apple run: the Homebrew fastlane
+  # version (the one tool in that job that is not pinned: Expo, the template and Xcode are), this
+  # workflow and scripts/qa-apple.mjs, and the ISO week, so it still runs once a week for what has
+  # no version to watch (Apple-side changes, an expiring Match certificate or API key). The
+  # fingerprint is a cache key saved by apple-mark after a green run; a failed Apple run saves
+  # nothing, so the next nightly tries again. If the fastlane lookup fails, the job runs.
+  apple-gate:
+    if: >-
+      github.repository == 'lamazzing/rn-shipyard' &&
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+      key: ${{ steps.fp.outputs.key }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        if: github.event_name == 'schedule'
+        with:
+          persist-credentials: false
+      - name: Fingerprint
+        id: fp
+        if: github.event_name == 'schedule'
+        env:
+          FILES_HASH: ${{ hashFiles('.github/workflows/qa.yml', 'scripts/qa-apple.mjs') }}
+        run: |
+          set -u
+          if fl="$(curl -fsS --retry 3 https://formulae.brew.sh/api/formula/fastlane.json | jq -er '"\(.versions.stable)_\(.revision)"')"; then
+            key="qa-apple-ok-$(date -u +%G-W%V)-fastlane-${fl}-${FILES_HASH:0:16}"
+            echo "key=$key" >> "$GITHUB_OUTPUT"
+            echo "fingerprint: $key"
+          else
+            echo "::warning::could not read the Homebrew fastlane version; running the Apple job"
+          fi
+      - name: Already tested?
+        id: seen
+        if: steps.fp.outputs.key != ''
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .qa-apple-ok
+          key: ${{ steps.fp.outputs.key }}
+          lookup-only: true
+      - name: Decide
+        id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          KEY: ${{ steps.fp.outputs.key }}
+          HIT: ${{ steps.seen.outputs.cache-hit }}
+        run: |
+          if [ "$EVENT" = schedule ] && [ -n "$KEY" ] && [ "$HIT" = true ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Apple job skipped: a green nightly already ran with this fingerprint ($KEY)" | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
   # Real Apple end to end: init (Match, API key only) -> build -> submit (TestFlight upload).
   # Every run uploads a build to TestFlight and needs secrets, so it never runs for pull requests or
-  # pushes. In a called workflow github.event_name is the CALLER's: a release run is a push, so it is
+  # pushes, and a nightly runs it only when apple-gate says so. In a called workflow github.event_name is the CALLER's: a release run is a push, so it is
   # recognised by its ref (refs/tags/v*). The environment only admits main and v* tags.
   #
   # Secrets are scoped by step: nothing secret exists while third-party code is installed (fixture
@@ -87,9 +145,8 @@ jobs:
   # submit sees the key alone. No secret goes through GITHUB_ENV. Residual risk: during build,
   # `expo prebuild` config plugins and `pod install` still run fixture-dependency code (see CONTRIBUTING.md).
   apple:
-    if: >-
-      github.repository == 'lamazzing/rn-shipyard' &&
-      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v'))
+    needs: apple-gate
+    if: needs.apple-gate.outputs.run == 'true'
     runs-on: macos-26
     timeout-minutes: 90
     environment: apple-qa
@@ -239,3 +296,17 @@ jobs:
       - name: Remove key and fixture
         if: always()
         run: rm -rf "$RUNNER_TEMP/asc" qa-apple-out/app
+
+  # Records a green nightly Apple run under its fingerprint, so apple-gate skips the next nightlies
+  # until something changes. Only nightly runs record: they share main's cache scope with apple-gate.
+  apple-mark:
+    needs: [apple-gate, apple]
+    if: needs.apple.result == 'success' && needs.apple-gate.outputs.key != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: echo "${{ github.run_id }}" > .qa-apple-ok
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .qa-apple-ok
+          key: ${{ needs.apple-gate.outputs.key }}
